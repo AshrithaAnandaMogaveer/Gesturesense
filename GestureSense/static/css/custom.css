@@ -1,0 +1,53 @@
+/*
+ * GestureSense – Custom CSS
+ * Supplements Tailwind classes defined in base.html.
+ */
+
+/* ── Autofill dark theme fix ──────────────────────────────────────────── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #e2e8f0;
+  -webkit-box-shadow: 0 0 0px 1000px #0f172a inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* ── Text selection ───────────────────────────────────────────────────── */
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: #e2e8f0;
+}
+
+/* ── Range input ──────────────────────────────────────────────────────── */
+input[type="range"] { accent-color: #6366f1; }
+
+/* ── Neon glow utility ────────────────────────────────────────────────── */
+.neon-glow-blue   { box-shadow: 0 0 20px rgba(99,102,241,0.4); }
+.neon-glow-purple { box-shadow: 0 0 20px rgba(167,139,250,0.4); }
+.neon-glow-cyan   { box-shadow: 0 0 20px rgba(34,211,238,0.4); }
+
+/* ── Skeleton loader ──────────────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position:  400px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.04) 25%,
+    rgba(255,255,255,0.08) 50%,
+    rgba(255,255,255,0.04) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 0.5rem;
+}
+
+/* ── Smooth page fade-in ──────────────────────────────────────────────── */
+body { animation: pageFade 0.4s ease-out; }
+@keyframes pageFade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── Focus ring override ──────────────────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid rgba(99,102,241,0.6);
+  outline-offset: 2px;
+}

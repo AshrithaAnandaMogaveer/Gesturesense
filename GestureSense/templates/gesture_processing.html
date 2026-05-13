@@ -1,0 +1,1400 @@
+﻿{% extends "base.html" %}
+{% block title %}Gesture Processing – GestureSense AI{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Camera container ─────────────────────────────────────────────────── */
+#cam-wrap {
+  position: relative;
+  background: #05050f;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  border: 1px solid rgba(99,102,241,0.35);
+  box-shadow: 0 0 50px rgba(99,102,241,0.18), inset 0 0 30px rgba(0,0,0,0.5);
+  aspect-ratio: 4/3;
+  width: 100%;
+}
+#cam-feed { width:100%; height:100%; object-fit:cover; display:none; }
+#cam-placeholder {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem;
+}
+@keyframes scanMove { 0%{top:0} 100%{top:100%} }
+#scan-line {
+  position:absolute; left:0; right:0; height:2px; display:none;
+  background: linear-gradient(90deg, transparent, #6366f1 30%, #a78bfa 70%, transparent);
+  animation: scanMove 2.5s linear infinite;
+  box-shadow: 0 0 8px #6366f1;
+}
+.cbracket { position:absolute; width:20px; height:20px; }
+.cbracket.tl { top:10px; left:10px; border-top:2px solid #6366f1; border-left:2px solid #6366f1; border-radius:3px 0 0 0; }
+.cbracket.tr { top:10px; right:10px; border-top:2px solid #6366f1; border-right:2px solid #6366f1; border-radius:0 3px 0 0; }
+.cbracket.bl { bottom:10px; left:10px; border-bottom:2px solid #6366f1; border-left:2px solid #6366f1; border-radius:0 0 0 3px; }
+.cbracket.br { bottom:10px; right:10px; border-bottom:2px solid #6366f1; border-right:2px solid #6366f1; border-radius:0 0 3px 0; }
+@keyframes statusPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.status-live { animation: statusPulse 1.5s ease-in-out infinite; }
+@keyframes gestureIn { from{opacity:0;transform:scale(0.85)} to{opacity:1;transform:scale(1)} }
+.gesture-pop { animation: gestureIn 0.25s ease-out; }
+#conf-fill {
+  height:100%; border-radius:9999px;
+  background: linear-gradient(90deg, #6366f1, #a78bfa, #38bdf8);
+  transition: width 0.35s ease, background 0.35s ease;
+  box-shadow: 0 0 8px rgba(99,102,241,0.5);
+}
+@keyframes aiRing { 0%{transform:scale(1);opacity:0.7} 100%{transform:scale(1.6);opacity:0} }
+.ai-ring { position:absolute; inset:-6px; border-radius:50%; border:2px solid #6366f1; animation: aiRing 1.8s ease-out infinite; }
+@keyframes histIn { from{opacity:0;transform:translateX(12px)} to{opacity:1;transform:translateX(0)} }
+.hist-item { animation: histIn 0.3s ease-out; }
+.stat-card { transition: box-shadow 0.3s, transform 0.3s; }
+.stat-card:hover { transform:translateY(-2px); box-shadow:0 0 20px rgba(99,102,241,0.25); }
+#history-list::-webkit-scrollbar { width:4px; }
+#history-list::-webkit-scrollbar-track { background:transparent; }
+#history-list::-webkit-scrollbar-thumb { background:#4338ca; border-radius:2px; }
+#cam-error { display:none; }
+#img-dropzone:hover, #img-dropzone.drag-over {
+  border-color: rgba(99,102,241,0.7) !important;
+  background: rgba(99,102,241,0.09) !important;
+  transform: scale(1.01);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes infoSlide { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+#gesture-info-card { transition: border-color 0.4s ease; }
+#gesture-info-card.active { border-color: rgba(99,102,241,0.45) !important; }
+.info-animate { animation: infoSlide 0.35s ease-out; }
+#gesture-emoji { transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); }
+#gesture-emoji.pop { transform: scale(1.35); }
+.use-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 10px; border-radius: 9999px;
+  font-size: 0.68rem; font-weight: 600;
+  background: rgba(99,102,241,0.12);
+  border: 1px solid rgba(99,102,241,0.25);
+  color: #a78bfa;
+}
+</style>
+
+<!-- FIX: handleFeedError must be defined BEFORE the <img onerror> fires -->
+<script>
+function handleFeedError() {
+  // feedErrors / cameraActive are declared in the main script block below.
+  // Guard: if the main script hasn't run yet, do nothing.
+  if (typeof cameraActive === 'undefined' || !cameraActive) return;
+  feedErrors = (typeof feedErrors !== 'undefined') ? feedErrors + 1 : 1;
+  if (feedErrors > 3) {
+    if (typeof showError === 'function') showError('Camera stream lost. Check your webcam is connected and try again.');
+    if (typeof stopCamera === 'function') stopCamera();
+    return;
+  }
+  if (typeof reconnectTimer !== 'undefined') clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(function() {
+    var feed = document.getElementById('cam-feed');
+    if (feed && cameraActive) {
+      feed.src = "{{ url_for('gesture.video_feed') }}?" + Date.now();
+    }
+  }, 1500);
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<section class="min-h-screen pt-20 pb-16 px-4">
+<div class="max-w-7xl mx-auto">
+
+  <!-- ── Page header ──────────────────────────────────────────────────── -->
+  <div class="text-center mb-8 animate-slide-up">
+    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass border border-brand-500/30 text-xs font-semibold uppercase tracking-widest mb-4">
+      <span class="w-2 h-2 rounded-full bg-brand-400" id="hdr-dot"
+            style="background:#4b5563;"></span>
+      <span id="hdr-status">Camera Offline</span>
+    </div>
+    <h1 class="text-4xl sm:text-5xl font-black text-white mb-2">
+      Gesture <span class="text-gradient">Processing</span>
+    </h1>
+    <p class="text-slate-400 text-sm max-w-md mx-auto">
+      Real-time AI hand gesture recognition powered by OpenCV &amp; MediaPipe.
+    </p>
+  </div>
+
+  <!-- ── Error banner ─────────────────────────────────────────────────── -->
+  <div id="cam-error"
+       class="max-w-2xl mx-auto mb-6 flex items-center gap-3 px-5 py-3 rounded-xl"
+       style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.35);">
+    <i class="fa-solid fa-triangle-exclamation text-red-400 flex-shrink-0"></i>
+    <span class="text-red-300 text-sm" id="cam-error-msg">Camera error.</span>
+    <button onclick="document.getElementById('cam-error').style.display='none'"
+            class="ml-auto text-red-400 hover:text-white transition-colors">
+      <i class="fa-solid fa-xmark text-xs"></i>
+    </button>
+  </div>
+
+  <!-- ── Main grid ────────────────────────────────────────────────────── -->
+  <div class="grid lg:grid-cols-3 gap-5">
+
+    <!-- ════════════════════════════════════════════════════════════════
+         LEFT – Camera feed (2 cols)
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="lg:col-span-2 flex flex-col gap-4">
+
+      <!-- Camera box -->
+      <div id="cam-wrap">
+        <div class="cbracket tl"></div>
+        <div class="cbracket tr"></div>
+        <div class="cbracket bl"></div>
+        <div class="cbracket br"></div>
+        <div id="scan-line"></div>
+
+        <!-- Placeholder -->
+        <div id="cam-placeholder">
+          <div class="relative">
+            <div class="w-20 h-20 rounded-2xl flex items-center justify-center"
+                 style="background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.3);">
+              <i class="fa-solid fa-camera text-4xl text-brand-400 opacity-50"></i>
+            </div>
+          </div>
+          <p class="text-slate-500 text-sm font-medium">Camera feed will appear here</p>
+          <p class="text-slate-600 text-xs">Click <strong class="text-slate-400">Start Camera</strong> below</p>
+        </div>
+
+        <!-- Live feed -->
+        <img id="cam-feed" src="" alt="Live gesture feed"
+             onerror="handleFeedError()" />
+
+        <!-- Live FPS overlay (top-left inside frame) -->
+        <div id="fps-overlay"
+             class="absolute top-3 left-3 hidden px-2 py-0.5 rounded-md text-xs font-mono font-bold"
+             style="background:rgba(0,0,0,0.55); color:#22d3ee; border:1px solid rgba(34,211,238,0.3);">
+          <span id="fps-val">0</span> FPS
+        </div>
+
+        <!-- Hand count overlay (top-right inside frame) -->
+        <div id="hand-overlay"
+             class="absolute top-3 right-3 hidden px-2 py-0.5 rounded-md text-xs font-mono font-bold"
+             style="background:rgba(0,0,0,0.55); color:#a78bfa; border:1px solid rgba(167,139,250,0.3);">
+          <i class="fa-solid fa-hand text-xs mr-1"></i>
+          <span id="hand-val">0</span>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="flex flex-wrap gap-3">
+        <button id="btn-start" onclick="startCamera()"
+                class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white btn-glow transition-all duration-300"
+                style="background:linear-gradient(135deg,#6366f1,#a78bfa); box-shadow:0 0 20px rgba(99,102,241,0.3);">
+          <i class="fa-solid fa-play"></i> Start Camera
+        </button>
+        <button id="btn-stop" onclick="stopCamera()" disabled
+                class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold glass border border-slate-600 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed text-slate-400">
+          <i class="fa-solid fa-stop"></i> Stop Camera
+        </button>
+        <button onclick="clearSession()"
+                class="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold glass border border-slate-600 hover:border-red-500/50 hover:text-red-400 text-slate-400 transition-all duration-300">
+          <i class="fa-solid fa-rotate-right"></i> Reset Session
+        </button>
+      </div>
+
+      <!-- Supported gestures -->
+      <div class="glass rounded-2xl p-5" style="border:1px solid rgba(255,255,255,0.06);">
+        <h3 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-brand-400"></i> Supported Gestures
+        </h3>
+        <div class="flex flex-wrap gap-2">
+          {% for g in ['Flower 🌸','Open Palm �','High Five ✋','Namaste 🙏','OK Sign 👌','Thumbs Up 👍','Thumbs Down 👎','Fist ✊','Victory ✌️','Peace ✌️','Point ☝️','Point Right 👉','Point Left �','Point Down 👇','Rock On �','Call Me 🤙','I Love You �','Finger Heart 🫰','Pinch �','Snap �','Vulcan Salute 🖖','Crossed Fingers 🤞','Gun �','Claw Hand �','Clapping 👏','Fist Pump ✊','Thumbs Up High �','Eating 🍽️','Sleep �','Drinking 🥤','Writing ✍️','Thinking 🤔','Three 3️⃣','Four 4️⃣','Pinky Promise 🤙','Middle Finger �'] %}
+          <span class="px-3 py-1 rounded-full text-xs font-medium text-brand-400"
+                style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.22);">{{ g }}</span>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- ── Image Upload Analyser ─────────────────────────────────────── -->
+      <div class="glass rounded-2xl overflow-hidden" style="border:1px solid rgba(99,102,241,0.25);">
+
+        <!-- Tab header -->
+        <div class="flex items-center gap-3 px-5 py-3"
+             style="background:rgba(99,102,241,0.08); border-bottom:1px solid rgba(99,102,241,0.15);">
+          <i class="fa-solid fa-image text-brand-400"></i>
+          <span class="text-white font-semibold text-sm">Image Gesture Analyser</span>
+          <span class="ml-auto text-xs text-slate-500">JPEG · PNG · WEBP · up to 10 MB</span>
+        </div>
+
+        <div class="p-5 space-y-4">
+
+          <!-- Drop zone -->
+          <div id="img-dropzone"
+               onclick="document.getElementById('img-file-input').click()"
+               ondragover="event.preventDefault(); this.classList.add('drag-over')"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleImgDrop(event)"
+               class="relative flex flex-col items-center justify-center gap-3 rounded-xl cursor-pointer transition-all duration-200 py-8"
+               style="border:2px dashed rgba(99,102,241,0.35); background:rgba(99,102,241,0.04);">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center"
+                 style="background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.3);">
+              <i class="fa-solid fa-cloud-arrow-up text-2xl text-brand-400"></i>
+            </div>
+            <div class="text-center">
+              <p class="text-slate-300 text-sm font-medium">Drop image here or click to browse</p>
+              <p class="text-slate-600 text-xs mt-1">Supports JPEG, PNG, WEBP, BMP</p>
+            </div>
+            <input type="file" id="img-file-input" accept="image/*" class="hidden"
+                   onchange="handleImgSelect(event)" />
+          </div>
+
+          <!-- Preview + result area (hidden until image selected) -->
+          <div id="img-preview-wrap" class="hidden space-y-4">
+
+            <!-- Image preview -->
+            <div class="relative rounded-xl overflow-hidden"
+                 style="background:#05050f; border:1px solid rgba(99,102,241,0.2);">
+              <img id="img-preview-original" src="" alt="Preview"
+                   class="w-full object-contain max-h-48" />
+              <button onclick="clearImageAnalysis()"
+                      class="absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-red-500/20 transition-all"
+                      style="background:rgba(0,0,0,0.6);">
+                <i class="fa-solid fa-xmark text-xs"></i>
+              </button>
+            </div>
+
+            <!-- Analyse button -->
+            <button id="img-analyse-btn" onclick="analyseImage()"
+                    class="w-full py-3 rounded-xl font-semibold text-white btn-glow flex items-center justify-center gap-2 transition-all duration-300"
+                    style="background:linear-gradient(135deg,#6366f1,#a78bfa); box-shadow:0 0 16px rgba(99,102,241,0.3);">
+              <i class="fa-solid fa-magnifying-glass-chart"></i>
+              <span id="img-btn-label">Analyse Gestures</span>
+              <div id="img-spinner" class="hidden w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                   style="animation:spin 0.7s linear infinite;"></div>
+            </button>
+          </div>
+
+          <!-- Results area -->
+          <div id="img-results" class="hidden space-y-3">
+
+            <!-- Annotated image -->
+            <div class="rounded-xl overflow-hidden"
+                 style="background:#05050f; border:1px solid rgba(99,102,241,0.25);">
+              <div class="px-3 py-2 text-xs text-slate-400 font-semibold uppercase tracking-wider"
+                   style="border-bottom:1px solid rgba(99,102,241,0.12);">
+                <i class="fa-solid fa-wand-magic-sparkles mr-1 text-brand-400"></i>AI Annotated Result
+              </div>
+              <img id="img-annotated" src="" alt="Annotated" class="w-full object-contain max-h-64" />
+            </div>
+
+            <!-- Detected gestures list -->
+            <div id="img-gesture-list" class="space-y-2"></div>
+
+            <!-- No hand message -->
+            <div id="img-no-hand" class="hidden text-center py-4">
+              <i class="fa-solid fa-hand-slash text-3xl text-slate-700 mb-2 block"></i>
+              <p class="text-slate-500 text-sm">No hand detected in this image.</p>
+              <p class="text-slate-600 text-xs mt-1">Try a clearer photo with good lighting.</p>
+            </div>
+          </div>
+
+          <!-- Error message -->
+          <div id="img-error" class="hidden px-4 py-3 rounded-xl text-sm text-red-300"
+               style="background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3);">
+            <i class="fa-solid fa-triangle-exclamation mr-2 text-red-400"></i>
+            <span id="img-error-msg"></span>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- end left col -->
+
+    <!-- ════════════════════════════════════════════════════════════════
+         RIGHT – Dashboard panels
+    ════════════════════════════════════════════════════════════════ -->
+    <div class="flex flex-col gap-4">
+
+      <!-- Current gesture card -->
+      <div class="glass-strong rounded-2xl p-6 text-center relative overflow-hidden"
+           style="border:1px solid rgba(99,102,241,0.3); box-shadow:0 0 30px rgba(99,102,241,0.1);">
+        <!-- Background glow -->
+        <div class="absolute inset-0 opacity-5 pointer-events-none"
+             style="background:radial-gradient(circle at 50% 50%, #6366f1, transparent 70%);"></div>
+
+        <!-- AI indicator -->
+        <div class="flex items-center justify-center gap-2 mb-4">
+          <div class="relative">
+            <div class="w-3 h-3 rounded-full" id="ai-dot"
+                 style="background:#4b5563;"></div>
+          </div>
+          <span class="text-slate-400 text-xs uppercase tracking-widest font-semibold" id="ai-label">
+            AI Standby
+          </span>
+        </div>
+
+        <!-- Gesture name -->
+        <div id="gesture-display"
+             class="text-3xl font-black mb-1 min-h-[2.5rem] flex items-center justify-center text-gradient">
+          —
+        </div>
+        <div class="text-slate-500 text-xs mb-4">Detected Gesture</div>
+
+        <!-- Confidence bar -->
+        <div class="w-full h-2.5 rounded-full overflow-hidden mb-2"
+             style="background:rgba(99,102,241,0.12);">
+          <div id="conf-fill" style="width:0%;"></div>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-slate-600">Confidence</span>
+          <span id="conf-pct" class="font-mono font-bold text-brand-400">0%</span>
+        </div>
+      </div>
+
+
+      <!-- Face Expression Card -->
+      <div class="glass-strong rounded-2xl p-5 relative overflow-hidden"
+           style="border:1px solid rgba(167,139,250,0.3); box-shadow:0 0 20px rgba(167,139,250,0.08);">
+        <div class="absolute inset-0 opacity-5 pointer-events-none"
+             style="background:radial-gradient(circle at 50% 0%, #a78bfa, transparent 70%);"></div>
+        <div class="flex items-center justify-between mb-4 relative">
+          <h3 class="text-white font-semibold text-sm flex items-center gap-2">
+            <i class="fa-solid fa-face-smile text-neon-purple"></i> Face Expression
+          </h3>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full" id="face-dot" style="background:#4b5563;"></span>
+            <span class="text-xs text-slate-500" id="face-status">No Face</span>
+          </div>
+        </div>
+        <div class="text-center mb-3">
+          <div id="face-emoji" class="text-4xl mb-1 transition-all duration-300">😐</div>
+          <div id="face-expr-name" class="text-lg font-black mb-1"
+               style="background:linear-gradient(135deg,#a78bfa,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">
+            Neutral
+          </div>
+          <div class="text-slate-500 text-xs">Detected Expression</div>
+        </div>
+        <div class="w-full h-2 rounded-full overflow-hidden mb-1" style="background:rgba(167,139,250,0.12);">
+          <div id="face-conf-fill"
+               style="height:100%;border-radius:9999px;width:0%;background:linear-gradient(90deg,#a78bfa,#f472b6);transition:width 0.35s ease;box-shadow:0 0 6px rgba(167,139,250,0.5);"></div>
+        </div>
+        <div class="flex justify-between text-xs">
+          <span class="text-slate-600">Confidence</span>
+          <span id="face-conf-pct" class="font-mono font-bold" style="color:#a78bfa;">0%</span>
+        </div>
+      </div>
+
+      <!-- Session stats -->
+      <div class="glass rounded-2xl p-5" style="border:1px solid rgba(255,255,255,0.06);">
+        <h3 class="text-white font-semibold text-sm mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-chart-line text-neon-blue"></i> Session Stats
+        </h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="stat-card text-center p-3 rounded-xl" style="background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.12);">
+            <div id="stat-total" class="text-2xl font-black text-gradient">0</div>
+            <div class="text-slate-500 text-xs mt-1">Detected</div>
+          </div>
+          <div class="stat-card text-center p-3 rounded-xl" style="background:rgba(167,139,250,0.08); border:1px solid rgba(167,139,250,0.12);">
+            <div id="stat-duration" class="text-2xl font-black" style="color:#a78bfa;">0s</div>
+            <div class="text-slate-500 text-xs mt-1">Duration</div>
+          </div>
+          <div class="stat-card text-center p-3 rounded-xl" style="background:rgba(56,189,248,0.08); border:1px solid rgba(56,189,248,0.12);">
+            <div id="stat-fps" class="text-2xl font-black" style="color:#38bdf8;">0</div>
+            <div class="text-slate-500 text-xs mt-1">FPS</div>
+          </div>
+          <div class="stat-card text-center p-3 rounded-xl" style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.12);">
+            <div id="stat-avgconf" class="text-2xl font-black" style="color:#10b981;">0%</div>
+            <div class="text-slate-500 text-xs mt-1">Avg Conf</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Gesture Explanation Card ──────────────────────────────── -->
+      <div id="gesture-info-card"
+           class="glass rounded-2xl p-5 relative overflow-hidden"
+           style="border:1px solid rgba(255,255,255,0.06);">
+
+        <!-- Subtle background glow that changes colour per gesture -->
+        <div id="info-glow"
+             class="absolute inset-0 opacity-0 pointer-events-none transition-opacity duration-500"
+             style="background:radial-gradient(circle at 50% 0%, rgba(99,102,241,0.12), transparent 70%);"></div>
+
+        <!-- Header -->
+        <h3 class="text-white font-semibold text-sm mb-4 flex items-center gap-2 relative">
+          <i class="fa-solid fa-circle-info text-brand-400"></i>
+          Gesture Meaning
+        </h3>
+
+        <!-- Idle state (no gesture) -->
+        <div id="info-idle" class="text-center py-3">
+          <i class="fa-solid fa-hand-sparkles text-3xl text-slate-700 mb-2 block"></i>
+          <p class="text-slate-600 text-xs">Show a hand gesture to the camera<br>to see its meaning here.</p>
+        </div>
+
+        <!-- Active state (gesture detected) -->
+        <div id="info-active" class="hidden relative">
+
+          <!-- Emoji + name row -->
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-2xl"
+                 id="info-emoji-wrap"
+                 style="background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.25);">
+              <span id="gesture-emoji">✋</span>
+            </div>
+            <div class="min-w-0">
+              <div id="info-name" class="text-white font-bold text-sm truncate">—</div>
+              <div id="info-category" class="text-xs mt-0.5" style="color:#a78bfa;">—</div>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="h-px mb-3" style="background:rgba(99,102,241,0.15);"></div>
+
+          <!-- Description -->
+          <p id="info-desc" class="text-slate-300 text-xs leading-relaxed mb-3">—</p>
+
+          <!-- How to make it -->
+          <div class="rounded-xl p-3 mb-3"
+               style="background:rgba(99,102,241,0.07); border:1px solid rgba(99,102,241,0.15);">
+            <div class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-1.5">
+              <i class="fa-solid fa-hand-pointer mr-1 text-brand-400"></i>How to make it
+            </div>
+            <p id="info-how" class="text-slate-300 text-xs leading-relaxed">—</p>
+          </div>
+
+          <!-- Common uses -->
+          <div>
+            <div class="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">
+              <i class="fa-solid fa-tag mr-1 text-neon-purple"></i>Common uses
+            </div>
+            <div id="info-uses" class="flex flex-wrap gap-1.5">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- All-time stats -->
+      <div class="glass rounded-2xl p-5" style="border:1px solid rgba(255,255,255,0.06);">
+        <h3 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-database text-neon-purple"></i> All-Time Stats
+        </h3>
+        <div class="space-y-2 text-sm">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400">Total Logged</span>
+            <span id="db-total" class="text-white font-bold font-mono">—</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400">Avg Confidence</span>
+            <span id="db-avgconf" class="text-brand-400 font-bold font-mono">—</span>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400">Top Gesture</span>
+            <span id="db-top" class="text-neon-purple font-bold text-xs max-w-[120px] text-right truncate">—</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detection history -->
+      <div class="glass rounded-2xl p-5 flex-1" style="border:1px solid rgba(255,255,255,0.06);">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-white font-semibold text-sm flex items-center gap-2">
+            <i class="fa-solid fa-clock-rotate-left text-neon-purple"></i> History
+          </h3>
+          <button onclick="clearHistory()"
+                  class="text-slate-600 hover:text-red-400 transition-colors text-xs">
+            <i class="fa-solid fa-trash"></i>
+          </button>
+        </div>
+        <div id="history-list" class="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+          <p class="text-slate-600 text-xs text-center py-6" id="history-empty">
+            <i class="fa-solid fa-hand-sparkles block text-2xl mb-2 opacity-30"></i>
+            No gestures detected yet
+          </p>
+        </div>
+      </div>
+
+      <!-- User card -->
+      <div class="glass rounded-2xl p-4 flex items-center gap-3"
+           style="border:1px solid rgba(255,255,255,0.06);">
+        <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+             style="background:linear-gradient(135deg,#6366f1,#a78bfa);">
+          {{ current_user.username[0].upper() }}
+        </div>
+        <div class="min-w-0">
+          <div class="text-white font-semibold text-sm truncate">{{ current_user.username }}</div>
+          <div class="text-slate-500 text-xs truncate">{{ current_user.email }}</div>
+        </div>
+        <a href="{{ url_for('auth.logout') }}"
+           class="ml-auto text-slate-500 hover:text-red-400 transition-colors flex-shrink-0"
+           title="Sign out">
+          <i class="fa-solid fa-right-from-bracket text-sm"></i>
+        </a>
+      </div>
+
+    </div><!-- end right -->
+  </div><!-- end grid -->
+</div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+// GestureSense – Gesture Processing Dashboard JS
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── State ──────────────────────────────────────────────────────────────────
+let cameraActive   = false;
+let pollTimer      = null;
+let statsTimer     = null;
+let faceTimer      = null;
+let clockTimer     = null;
+let sessionStart   = null;
+let sessionCount   = 0;
+let lastGesture    = '';
+let lastLoggedGest = '';
+let logDebounce    = null;
+let reconnectTimer = null;
+let feedErrors     = 0;
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const camFeed      = document.getElementById('cam-feed');
+const camPlaceholder = document.getElementById('cam-placeholder');
+const scanLine     = document.getElementById('scan-line');
+const hdrDot       = document.getElementById('hdr-dot');
+const hdrStatus    = document.getElementById('hdr-status');
+const btnStart     = document.getElementById('btn-start');
+const btnStop      = document.getElementById('btn-stop');
+const gestureDisp  = document.getElementById('gesture-display');
+const confFill     = document.getElementById('conf-fill');
+const confPct      = document.getElementById('conf-pct');
+const aiDot        = document.getElementById('ai-dot');
+const aiLabel      = document.getElementById('ai-label');
+const statTotal    = document.getElementById('stat-total');
+const statDuration = document.getElementById('stat-duration');
+const statFps      = document.getElementById('stat-fps');
+const statAvgConf  = document.getElementById('stat-avgconf');
+const dbTotal      = document.getElementById('db-total');
+const dbAvgConf    = document.getElementById('db-avgconf');
+const dbTop        = document.getElementById('db-top');
+const historyList  = document.getElementById('history-list');
+const histEmpty    = document.getElementById('history-empty');
+const fpsOverlay   = document.getElementById('fps-overlay');
+const handOverlay  = document.getElementById('hand-overlay');
+const fpsVal       = document.getElementById('fps-val');
+const handVal      = document.getElementById('hand-val');
+
+// ── Confidence colour helper ───────────────────────────────────────────────
+function confColour(pct) {
+  if (pct >= 85) return 'linear-gradient(90deg,#10b981,#34d399)';
+  if (pct >= 65) return 'linear-gradient(90deg,#6366f1,#a78bfa)';
+  if (pct >= 45) return 'linear-gradient(90deg,#f59e0b,#fbbf24)';
+  return 'linear-gradient(90deg,#ef4444,#f87171)';
+}
+
+// ── Gesture knowledge base (matches classifier output names exactly) ─────────
+const GESTURE_INFO = {
+
+  // ── FLOWER ────────────────────────────────────────────────────────────────
+  'Flower - Blooming / Beauty': {
+    emoji: '🌸',
+    category: 'Expressive',
+    color: '#f472b6',
+    desc: 'All five fingers fully extended and spread wide with tips slightly curved outward — like a blooming flower opening its petals.',
+    how: 'Extend all five fingers as wide as possible, then gently curve the fingertips slightly outward (not fully straight). Hold the hand up like a flower blooming.',
+    uses: ['Beauty / Elegance', 'Blooming / Growth', 'Nature / Flowers', 'Artistic expression', 'Greeting with grace'],
+  },
+
+  // ── GREETINGS & SOCIAL ──────────────────────────────────────────────────
+  'Open Palm - Stop / Hello / Wave': {
+    emoji:'🖐', category:'Greeting / Command', color:'#10b981',
+    desc:'All five fingers fully extended and spread wide, palm facing forward.',
+    how:'Extend all five fingers wide apart, hold your palm flat facing the camera.',
+    uses:['Stop / Halt','Hello / Wave','High Five','Show number 5'],
+  },
+  'High Five - Celebrate': {
+    emoji:'✋', category:'Greeting', color:'#22d3ee',
+    desc:'Open palm raised high with fingers together, ready to slap another palm.',
+    how:'Raise your open hand high with fingers slightly together, palm facing forward.',
+    uses:['Celebration','Agreement','Congratulations','Team spirit'],
+  },
+  'Namaste - Respect / Prayer': {
+    emoji:'🙏', category:'Respect', color:'#f59e0b',
+    desc:'Both palms pressed together at chest level, fingers pointing upward.',
+    how:'Press your palms together with fingers pointing up, hold at chest level.',
+    uses:['Greeting (South Asian)','Respect / Gratitude','Prayer','Thank you'],
+  },
+  'Handshake 🤝': {
+    emoji:'🤝', category:'Greeting', color:'#38bdf8',
+    desc:'Closed fist extended forward with thumb side up, ready to shake hands.',
+    how:'Make a fist and extend your arm forward with thumb pointing up.',
+    uses:['Meeting someone','Agreement / Deal','Professional greeting','Farewell'],
+  },
+
+  // ── AGREEMENT & APPROVAL ────────────────────────────────────────────────
+  'OK Sign - Perfect / Correct': {
+    emoji:'👌', category:'Agreement', color:'#22d3ee',
+    desc:'Thumb and index fingertips touch forming a circle; other three fingers extended.',
+    how:'Touch your thumb tip to your index fingertip to form a circle, extend the other three.',
+    uses:['OK / Approved','Perfect / Correct','Excellent','Scuba diving signal'],
+  },
+  'Thumbs Up - Agree / Like': {
+    emoji:'👍', category:'Agreement', color:'#10b981',
+    desc:'Only the thumb is extended upward, all other fingers curled into the palm.',
+    how:'Make a fist then extend only your thumb pointing straight up.',
+    uses:['Approval / Like','Agreement','Good job','Hitchhiking'],
+  },
+  'Thumbs Down - Disagree': {
+    emoji:'👎', category:'Disagreement', color:'#ef4444',
+    desc:'Only the thumb is extended pointing downward, all other fingers curled.',
+    how:'Make a fist then extend only your thumb pointing straight down.',
+    uses:['Disapproval / Dislike','Disagreement','No / Reject','Negative feedback'],
+  },
+  'Pinch Sign': {
+    emoji:'🤏', category:'Precision', color:'#a78bfa',
+    desc:'Thumb and index fingertips very close together, other fingers curled.',
+    how:'Bring your thumb and index fingertip very close without touching, curl others.',
+    uses:['Precise / Exact','A little bit','Tiny amount','Delicate action'],
+  },
+  'Finger Heart Sign': {
+    emoji:'🫰', category:'Affection', color:'#f472b6',
+    desc:'Thumb and index finger crossed to form a small heart shape.',
+    how:'Cross your thumb over your index finger to form a mini heart shape.',
+    uses:['Love / Affection','Like / Appreciate','K-pop culture','Cute greeting'],
+  },
+  'I Love You - ILY Sign': {
+    emoji:'🤟', category:'Affection', color:'#f472b6',
+    desc:'Thumb, index, and pinky extended; middle and ring fingers curled.',
+    how:'Extend thumb, index, and pinky while curling middle and ring fingers.',
+    uses:['I Love You (ASL)','Affection','Rock + Love hybrid','Expressive greeting'],
+  },
+
+  // ── STOP, WAIT & COMMANDS ───────────────────────────────────────────────
+  'Index Point - Indicate': {
+    emoji:'☝️', category:'Command', color:'#f59e0b',
+    desc:'Index finger raised, other fingers and thumb curled.',
+    how:'Raise only your index finger, curl all other fingers.',
+    uses:['Wait a moment','One second','Attention please','Number one'],
+  },
+  'Point Up - Number One / Attention': {
+    emoji:'☝️', category:'Direction', color:'#a78bfa',
+    desc:'Index finger pointing straight upward above head level.',
+    how:'Extend only your index finger pointing straight up high.',
+    uses:['Point up','Number one','Attention','Upward direction'],
+  },
+  'Point Right - That Way': {
+    emoji:'👉', category:'Direction', color:'#38bdf8',
+    desc:'Index finger pointing to the right side.',
+    how:'Extend only your index finger pointing to the right.',
+    uses:['That way / Right','Over there','Next item','Direction right'],
+  },
+  'Point Left - That Way': {
+    emoji:'👈', category:'Direction', color:'#38bdf8',
+    desc:'Index finger pointing to the left side.',
+    how:'Extend only your index finger pointing to the left.',
+    uses:['That way / Left','Back there','Previous item','Direction left'],
+  },
+  'Point Down - Look Here': {
+    emoji:'👇', category:'Direction', color:'#a78bfa',
+    desc:'Index finger pointing straight downward.',
+    how:'Extend only your index finger pointing straight down.',
+    uses:['Down / Below','Here / This spot','Downward direction','Look here'],
+  },
+
+  // ── DAILY LIFE SIGNS ────────────────────────────────────────────────────
+  'Eating Sign - Food / Hungry': {
+    emoji:'🍽️', category:'Daily Life', color:'#f59e0b',
+    desc:'All four fingers curled toward palm, fingertips bunched together pointing toward the mouth — mimicking eating.',
+    how:'Curl all four fingers toward your palm with tips bunched together, then raise your hand toward your mouth.',
+    uses:['Eating / Hungry','Food / Meal','Let\'s eat','Lunchtime'],
+  },
+  'Sleep Sign - Tired / Rest': {
+    emoji:'😴', category:'Daily Life', color:'#6366f1',
+    desc:'Closed fist with hand tilted sideways, palm resting near the cheek — mimicking sleep.',
+    how:'Make a fist and tilt your hand sideways as if resting your cheek on it.',
+    uses:['Sleeping / Tired','Bedtime','I\'m sleepy','Rest time'],
+  },
+  'Drinking Sign - Thirsty': {
+    emoji:'🥤', category:'Daily Life', color:'#38bdf8',
+    desc:'Thumb extended sideways, hand tilted back as if drinking from a cup.',
+    how:'Extend your thumb sideways and tilt your hand back toward your mouth.',
+    uses:['Drinking / Thirsty','Water / Beverage','Let\'s drink','Cheers'],
+  },
+  'Writing Sign - Pen / Note': {
+    emoji:'✍️', category:'Daily Life', color:'#a78bfa',
+    desc:'Index and middle fingers extended close together like holding a pen.',
+    how:'Extend index and middle fingers close together, curl ring, pinky, and thumb.',
+    uses:['Writing / Note','Sign here','Pen / Pencil','Taking notes'],
+  },
+  'Thinking Sign': {
+    emoji:'🤔', category:'Expression', color:'#38bdf8',
+    desc:'Thumb extended sideways near chin, other fingers curled — contemplative pose.',
+    how:'Extend only your thumb sideways (not up/down), curl other fingers, hold near chin.',
+    uses:['Thinking / Considering','Hmm / Maybe','Pondering','Decision making'],
+  },
+  'Call Me - Phone Sign / Shaka': {
+    emoji:'🤙', category:'Communication', color:'#22d3ee',
+    desc:'Thumb and pinky extended, three middle fingers curled — like holding a phone.',
+    how:'Extend your thumb and pinky, curl your index, middle, and ring fingers.',
+    uses:['Call me / Phone gesture','Shaka / Hang loose','Surfer greeting','Casual hello'],
+  },
+
+  // ── CONGRATULATING ──────────────────────────────────────────────────────
+  'Clapping - Congratulations / Bravo': {
+    emoji:'👏', category:'Congratulating', color:'#f59e0b',
+    desc:'Open flat palm with all fingers extended and moderate spread, hand raised — the ready-to-clap position.',
+    how:'Open your palm with fingers moderately spread and raise your hand to clap level.',
+    uses:['Applause / Clapping','Well done','Congratulations','Bravo'],
+  },
+  'Fist Pump - Yes! / Congratulations': {
+    emoji:'✊', category:'Congratulating', color:'#10b981',
+    desc:'Closed fist raised high above wrist level — the victory pump gesture.',
+    how:'Make a tight fist and raise your arm high with the fist pointing upward.',
+    uses:['Yes! / Victory','Celebration','Congratulations','Achievement'],
+  },
+  'Thumbs Up High - Great Job! / Congratulations': {
+    emoji:'👍', category:'Congratulating', color:'#10b981',
+    desc:'Thumb extended upward with the hand raised high — expressing strong approval.',
+    how:'Make a thumbs up and raise your hand high above normal position.',
+    uses:['Great job!','Congratulations','Excellent work','Strong approval'],
+  },
+  'Applause - Well Done / Congratulations': {
+    emoji:'👏', category:'Congratulating', color:'#f59e0b',
+    desc:'Open palm with all fingers up and moderate spread — single-hand applause.',
+    how:'Open your palm with fingers spread moderately, hold at chest level.',
+    uses:['Well done','Congratulations','Applause','Appreciation'],
+  },
+  'Celebratory Wave - Congratulations!': {
+    emoji:'🎉', category:'Congratulating', color:'#f472b6',
+    desc:'Open palm spread wide, hand raised high — a celebratory wave.',
+    how:'Spread all fingers wide and raise your hand high, wave side to side.',
+    uses:['Celebration','Congratulations','Excited greeting','Party'],
+  },
+
+  // ── NUMBERS ─────────────────────────────────────────────────────────────
+  'Fist - Closed Hand': {
+    emoji:'✊', category:'Closed Hand', color:'#ef4444',
+    desc:'All fingers tightly curled into a closed fist.',
+    how:'Curl all four fingers into your palm and wrap your thumb over them.',
+    uses:['Power / Strength','Solidarity','Fist bump','Rock (Rock-Paper-Scissors)'],
+  },
+  'Fist - Power / Strength': {
+    emoji:'✊', category:'Power', color:'#ef4444',
+    desc:'Closed fist held low — expressing power or strength.',
+    how:'Make a tight fist and hold it at a lower position.',
+    uses:['Power / Strength','Determination','Solidarity','Emphasis'],
+  },
+  'Two - Thumb and Index Open': {
+    emoji:'2️⃣', category:'Number', color:'#a78bfa',
+    desc:'Thumb and index finger extended with space between them.',
+    how:'Extend thumb and index finger with a gap between them, curl other fingers.',
+    uses:['Number two','Two items','Second option','Counting'],
+  },
+  'Gun Sign - Finger Gun': {
+    emoji:'🔫', category:'Playful', color:'#64748b',
+    desc:'Thumb up and index finger forward like a gun, other fingers curled.',
+    how:'Extend thumb up and index finger forward, curl middle, ring, and pinky.',
+    uses:['Finger gun','Playful gesture','Shooting motion','Pointing'],
+  },
+  'Three Fingers - Number 3': {
+    emoji:'3️⃣', category:'Number', color:'#f59e0b',
+    desc:'Index, middle, and ring fingers extended, thumb and pinky curled.',
+    how:'Extend index, middle, and ring fingers together, keep thumb and pinky down.',
+    uses:['Number three','Three items','Third option','Counting'],
+  },
+  'Four Fingers - Number 4': {
+    emoji:'4️⃣', category:'Number', color:'#f59e0b',
+    desc:'All four fingers extended, only thumb curled in.',
+    how:'Extend all four fingers straight up, keep only your thumb tucked in.',
+    uses:['Number four','Four items','Fourth option','Counting'],
+  },
+  'Five Fingers ✋': {
+    emoji:'✋', category:'Number', color:'#10b981',
+    desc:'All five fingers extended together, moderate spread.',
+    how:'Extend all five fingers with moderate spacing.',
+    uses:['Number five','Five items','Stop','Open hand'],
+  },
+
+  // ── CULTURAL & SPECIAL ──────────────────────────────────────────────────
+  'Victory - Peace Sign': {
+    emoji:'✌️', category:'Cultural', color:'#6366f1',
+    desc:'Index and middle fingers extended in a V shape with fingers spread apart.',
+    how:'Extend index and middle fingers in a wide V shape, curl ring, pinky, and thumb.',
+    uses:['Peace sign','Victory / Win','Number 2','Photo pose'],
+  },
+  'Crossed Fingers - Good Luck': {
+    emoji:'🤞', category:'Cultural', color:'#f59e0b',
+    desc:'Index and middle fingers extended but crossed over each other.',
+    how:'Extend index and middle fingers, cross the middle over the index.',
+    uses:['Good luck','Hoping / Wishing','Fingers crossed','Fortune'],
+  },
+  'Vulcan Salute - Live Long and Prosper': {
+    emoji:'🖖', category:'Cultural', color:'#a78bfa',
+    desc:'Four fingers extended with a gap between middle and ring fingers.',
+    how:'Extend all four fingers, create a V-gap between middle and ring fingers.',
+    uses:['Star Trek greeting','Live long and prosper','Sci-fi culture','Unique greeting'],
+  },
+  'Rock On - Metal Sign': {
+    emoji:'🤘', category:'Cultural', color:'#f472b6',
+    desc:'Index and pinky extended, middle and ring curled — the rock sign.',
+    how:'Extend index and pinky, curl middle and ring fingers, tuck thumb.',
+    uses:['Rock music / Metal','Excitement','Hook \'em Horns','You rock!'],
+  },
+  'Middle Finger Sign': {
+    emoji:'🖕', category:'Expression', color:'#ef4444',
+    desc:'Only the middle finger extended upward, all others curled.',
+    how:'Extend only your middle finger straight up, curl all other fingers.',
+    uses:['Rude gesture','Frustration (informal)','Offensive sign','Anger expression'],
+  },
+  'Pinky Up - Pinky Promise': {
+    emoji:'🤙', category:'Cultural', color:'#f472b6',
+    desc:'Only the pinky finger extended, others curled — pinky promise gesture.',
+    how:'Extend only your pinky finger, curl all other fingers and thumb.',
+    uses:['Pinky promise','Small / Little','Promise / Commitment','Cute gesture'],
+  },
+  'Claw Hand - Grab Sign': {
+    emoji:'🦅', category:'Expressive', color:'#f59e0b',
+    desc:'All fingers extended but bent at the knuckles like a claw.',
+    how:'Extend all fingers but bend them at the middle joint to form a claw shape.',
+    uses:['Claw / Grab','Scary gesture','Eagle claw','Playful threat'],
+  },
+  'Snap / Click Sign': {
+    emoji:'👆', category:'Action', color:'#22d3ee',
+    desc:'Thumb and middle finger close together, ready to snap.',
+    how:'Bring your thumb and middle fingertip close together, curl other fingers.',
+    uses:['Snap fingers','Get attention','Click / Select','Emphasis'],
+  },
+  'Two Fingers - Scissors': {
+    emoji:'✂️', category:'Playful', color:'#6366f1',
+    desc:'Index and middle fingers extended in a V, mimicking scissors.',
+    how:'Extend index and middle fingers in a V shape, curl ring, pinky, and thumb.',
+    uses:['Scissors (Rock-Paper-Scissors)','Cut / Trim','Two fingers','Peace sign variant'],
+  },
+};
+
+// ── Smart gesture name normaliser ──────────────────────────────────────────
+// Matches the exact names returned by classify_gesture() in gesture_engine.py
+function normaliseGestureName(raw) {
+  if (!raw) return null;
+  // 1. Exact match
+  if (GESTURE_INFO[raw]) return raw;
+  // 2. Prefix match — classifier returns "X - Y", KB key is "X - Y"
+  for (const key of Object.keys(GESTURE_INFO)) {
+    if (raw === key) return key;
+    // Match by the part before the dash
+    const rawBase = raw.split(' - ')[0].trim().toLowerCase();
+    const keyBase = key.split(' - ')[0].trim().toLowerCase();
+    if (rawBase === keyBase) return key;
+    // Partial: raw starts with key base
+    if (rawBase.startsWith(keyBase) || keyBase.startsWith(rawBase)) return key;
+  }
+  return null;
+}
+
+let lastInfoGesture = '';
+
+// ── DOM refs for gesture info card ────────────────────────────────────────
+const infoCard      = document.getElementById('gesture-info-card');
+const infoIdle      = document.getElementById('info-idle');
+const infoActive    = document.getElementById('info-active');
+const infoEmoji     = document.getElementById('gesture-emoji');
+const infoEmojiWrap = document.getElementById('info-emoji-wrap');
+const infoName      = document.getElementById('info-name');
+const infoCategory  = document.getElementById('info-category');
+const infoDesc      = document.getElementById('info-desc');
+const infoHow       = document.getElementById('info-how');
+const infoUses      = document.getElementById('info-uses');
+const infoGlow      = document.getElementById('info-glow');
+
+function updateGestureInfo(rawName, hasHand) {
+  if (!hasHand || !rawName || rawName === 'No Hand Detected') {
+    infoIdle.classList.remove('hidden');
+    infoActive.classList.add('hidden');
+    infoCard.classList.remove('active');
+    infoGlow.style.opacity = '0';
+    lastInfoGesture = '';
+    return;
+  }
+
+  const key  = normaliseGestureName(rawName);
+  const info = key ? GESTURE_INFO[key] : null;
+
+  if (!info || key === lastInfoGesture) return;
+  lastInfoGesture = key;
+
+  // Swap idle → active
+  infoIdle.classList.add('hidden');
+  infoActive.classList.remove('hidden');
+  infoCard.classList.add('active');
+
+  // Animate emoji pop
+  infoEmoji.textContent = info.emoji;
+  infoEmoji.classList.remove('pop');
+  void infoEmoji.offsetWidth;
+  infoEmoji.classList.add('pop');
+  setTimeout(() => infoEmoji.classList.remove('pop'), 350);
+
+  // Colour the emoji wrap border
+  infoEmojiWrap.style.borderColor = info.color + '55';
+  infoEmojiWrap.style.background  = info.color + '18';
+
+  // Glow
+  infoGlow.style.background = `radial-gradient(circle at 50% 0%, ${info.color}20, transparent 70%)`;
+  infoGlow.style.opacity    = '1';
+
+  // Text content – animate in
+  infoActive.classList.remove('info-animate');
+  void infoActive.offsetWidth;
+  infoActive.classList.add('info-animate');
+
+  infoName.textContent     = key;
+  infoCategory.textContent = info.category;
+  infoCategory.style.color = info.color;
+  infoDesc.textContent     = info.desc;
+  infoHow.textContent      = info.how;
+
+  // Use tags
+  infoUses.innerHTML = info.uses.map(u =>
+    `<span class="use-tag" style="border-color:${info.color}33; color:${info.color};">${u}</span>`
+  ).join('');
+}
+
+// ── Format seconds ─────────────────────────────────────────────────────────
+function fmtDuration(s) {
+  if (s < 60)  return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+}
+
+// ── Show error banner ──────────────────────────────────────────────────────
+function showError(msg) {
+  const banner = document.getElementById('cam-error');
+  document.getElementById('cam-error-msg').textContent = msg;
+  banner.style.display = 'flex';
+  setTimeout(() => { banner.style.display = 'none'; }, 6000);
+}
+
+// ── Start camera ───────────────────────────────────────────────────────────
+function startCamera() {
+  if (cameraActive) return;
+  cameraActive = true;
+  feedErrors   = 0;
+  sessionStart = Date.now();
+  sessionCount = 0;
+  lastGesture  = '';
+
+  // Show feed
+  camFeed.src = "{{ url_for('gesture.video_feed') }}?" + Date.now();
+  camFeed.style.display = 'block';
+  camPlaceholder.style.display = 'none';
+  scanLine.style.display = 'block';
+  fpsOverlay.classList.remove('hidden');
+  handOverlay.classList.remove('hidden');
+
+  // Status
+  hdrDot.style.background = '#10b981';
+  hdrDot.classList.add('status-live');
+  hdrStatus.textContent = 'Camera Active';
+
+  // AI indicator
+  aiDot.style.background = '#10b981';
+  aiLabel.textContent = 'AI Processing';
+
+  // Buttons
+  btnStart.disabled = true;
+  btnStart.style.opacity = '0.45';
+  btnStop.disabled = false;
+  btnStop.style.color = '#f87171';
+  btnStop.style.borderColor = 'rgba(248,113,113,0.4)';
+
+  // Timers
+  pollTimer  = setInterval(pollGesture, 400);
+  statsTimer = setInterval(fetchStats, 4000);
+  faceTimer  = setInterval(pollFace, 600);
+  clockTimer = setInterval(tickClock, 1000);
+
+  fetchStats();
+}
+
+// ── Stop camera ────────────────────────────────────────────────────────────
+function stopCamera() {
+  if (!cameraActive) return;
+  cameraActive = false;
+
+  camFeed.src = '';
+  camFeed.style.display = 'none';
+  camPlaceholder.style.display = 'flex';
+  scanLine.style.display = 'none';
+  fpsOverlay.classList.add('hidden');
+  handOverlay.classList.add('hidden');
+
+  hdrDot.style.background = '#4b5563';
+  hdrDot.classList.remove('status-live');
+  hdrStatus.textContent = 'Camera Offline';
+
+  aiDot.style.background = '#4b5563';
+  aiLabel.textContent = 'AI Standby';
+
+  btnStart.disabled = false;
+  btnStart.style.opacity = '1';
+  btnStop.disabled = true;
+  btnStop.style.color = '';
+  btnStop.style.borderColor = '';
+
+  clearInterval(pollTimer);
+  clearInterval(statsTimer);
+  clearInterval(faceTimer);
+  // Reset face card
+  if (typeof faceDot !== 'undefined') {
+    faceDot.style.background = '#4b5563';
+    faceStatus.textContent   = 'No Face';
+    faceStatus.style.color   = '';
+    faceEmoji.textContent    = '\u{1F610}';
+    faceExprName.textContent = 'No Face Detected';
+    faceConfFill.style.width = '0%';
+    faceConfPct.textContent  = '0%';
+  }
+  clearInterval(clockTimer);
+
+  // Reset gesture display
+  gestureDisp.textContent = '—';
+  gestureDisp.className = 'text-3xl font-black mb-1 min-h-[2.5rem] flex items-center justify-center text-gradient';
+  confFill.style.width = '0%';
+  confPct.textContent = '0%';
+  // Reset info card
+  updateGestureInfo(null, false);
+}
+
+// ── Session clock ──────────────────────────────────────────────────────────
+function tickClock() {
+  if (!sessionStart) return;
+  const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+  statDuration.textContent = fmtDuration(elapsed);
+}
+
+// ── Poll /gesture/current ──────────────────────────────────────────────────
+async function pollGesture() {
+  try {
+    const res  = await fetch("{{ url_for('gesture.current_gesture') }}");
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const name    = data.gesture    || 'No Hand Detected';
+    const conf    = data.confidence || 0;
+    const hasHand = data.has_hand   || false;
+
+    // Update gesture display
+    if (name !== lastGesture) {
+      gestureDisp.textContent = hasHand ? name : '—';
+      gestureDisp.classList.remove('gesture-pop');
+      void gestureDisp.offsetWidth; // reflow
+      gestureDisp.classList.add('gesture-pop');
+      lastGesture = name;
+      // Update gesture explanation panel
+      updateGestureInfo(name, hasHand);
+    }
+
+    // Confidence bar
+    const pct = Math.min(conf, 100);
+    confFill.style.width      = pct + '%';
+    confFill.style.background = confColour(pct);
+    confPct.textContent       = pct.toFixed(1) + '%';
+
+    // Log to DB (debounced – only when gesture changes and conf > 55%)
+    if (hasHand && name !== lastLoggedGest && conf > 55) {
+      lastLoggedGest = name;
+      sessionCount++;
+      statTotal.textContent = sessionCount;
+      clearTimeout(logDebounce);
+      logDebounce = setTimeout(() => logGesture(name, conf / 100), 300);
+      addHistoryItem(name, conf);
+    }
+
+  } catch (_) { /* network hiccup – ignore */ }
+}
+
+
+// ── Poll /gesture/current_face ─────────────────────────────────────────────
+const faceDot      = document.getElementById('face-dot');
+const faceStatus   = document.getElementById('face-status');
+const faceEmoji    = document.getElementById('face-emoji');
+const faceExprName = document.getElementById('face-expr-name');
+const faceConfFill = document.getElementById('face-conf-fill');
+const faceConfPct  = document.getElementById('face-conf-pct');
+
+const FACE_EMOJI_MAP = {
+  'Surprised':       '\u{1F632}',
+  'Mouth Open':      '\u{1F62E}',
+  'Winking':         '\u{1F609}',
+  'Eyes Closed':     '\u{1F60C}',
+  'Raised Eyebrows': '\u{1F928}',
+  'Frowning':        '\u{1F620}',
+  'Sad':             '\u{1F622}',
+  'Big Smile':       '\u{1F601}',
+  'Happy / Smiling': '\u{1F60A}',
+  'Slight Smile':    '\u{1F642}',
+  'Squinting':       '\u{1F611}',
+  'Disgusted':       '\u{1F922}',
+  'Thinking':        '\u{1F914}',
+  'Neutral':         '\u{1F610}',
+};
+
+function getFaceEmoji(expr) {
+  for (const [key, emoji] of Object.entries(FACE_EMOJI_MAP)) {
+    if (expr.startsWith(key)) return emoji;
+  }
+  return '\u{1F610}';
+}
+
+async function pollFace() {
+  try {
+    const res = await fetch("{{ url_for('gesture.current_face') }}");
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.detected) {
+      const expr = data.expression || 'Neutral';
+      const conf = data.confidence || 0;
+      faceDot.style.background = '#10b981';
+      faceStatus.textContent   = 'Detected';
+      faceStatus.style.color   = '#10b981';
+      faceEmoji.textContent    = getFaceEmoji(expr);
+      faceExprName.textContent = expr;
+      faceConfFill.style.width = Math.min(conf, 100) + '%';
+      faceConfPct.textContent  = conf.toFixed(1) + '%';
+    } else {
+      faceDot.style.background = '#4b5563';
+      faceStatus.textContent   = 'No Face';
+      faceStatus.style.color   = '';
+      faceEmoji.textContent    = '\u{1F610}';
+      faceExprName.textContent = 'No Face Detected';
+      faceConfFill.style.width = '0%';
+      faceConfPct.textContent  = '0%';
+    }
+  } catch (_) {}
+}
+
+// ── Fetch /gesture/stats ───────────────────────────────────────────────────
+async function fetchStats() {
+  try {
+    const res  = await fetch("{{ url_for('gesture.stats') }}");
+    if (!res.ok) return;
+    const d = await res.json();
+
+    statFps.textContent     = d.fps ?? '—';
+    statAvgConf.textContent = (d.avg_confidence ?? 0) + '%';
+    dbTotal.textContent     = d.total_db ?? '—';
+    dbAvgConf.textContent   = (d.avg_conf_db ?? 0) + '%';
+    dbTop.textContent       = d.top_gesture ?? '—';
+
+    // FPS overlay
+    fpsVal.textContent  = d.fps ?? '0';
+    handVal.textContent = d.hand_count ?? '0';
+
+  } catch (_) {}
+}
+
+// ── POST /gesture/log ──────────────────────────────────────────────────────
+async function logGesture(gesture, confidence) {
+  try {
+    await fetch("{{ url_for('gesture.log_gesture') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gesture, confidence }),
+    });
+  } catch (_) {}
+}
+
+// ── Add item to history list ───────────────────────────────────────────────
+function addHistoryItem(name, conf) {
+  if (histEmpty) histEmpty.remove();
+
+  const now  = new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  const pct  = conf.toFixed(1);
+  const col  = conf >= 85 ? '#10b981' : conf >= 65 ? '#818cf8' : conf >= 45 ? '#f59e0b' : '#ef4444';
+
+  const item = document.createElement('div');
+  item.className = 'hist-item flex items-center justify-between px-3 py-2 rounded-lg';
+  item.style.background = 'rgba(99,102,241,0.07)';
+  item.style.border     = '1px solid rgba(99,102,241,0.12)';
+  item.innerHTML = `
+    <div class="flex items-center gap-2 min-w-0">
+      <i class="fa-solid fa-hand text-brand-400 text-xs flex-shrink-0"></i>
+      <span class="text-white text-xs font-medium truncate">${name}</span>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+      <span class="text-xs font-mono font-bold" style="color:${col}">${pct}%</span>
+      <span class="text-slate-600 text-xs">${now}</span>
+    </div>`;
+
+  historyList.prepend(item);
+  while (historyList.children.length > 25) historyList.lastChild.remove();
+}
+
+// ── Clear history display ──────────────────────────────────────────────────
+function clearHistory() {
+  historyList.innerHTML = `
+    <p class="text-slate-600 text-xs text-center py-6" id="history-empty">
+      <i class="fa-solid fa-hand-sparkles block text-2xl mb-2 opacity-30"></i>
+      No gestures detected yet
+    </p>`;
+}
+
+// ── Reset full session ─────────────────────────────────────────────────────
+function clearSession() {
+  clearHistory();
+  sessionCount = 0;
+  lastGesture  = '';
+  lastLoggedGest = '';
+  sessionStart = cameraActive ? Date.now() : null;
+  statTotal.textContent    = '0';
+  statDuration.textContent = '0s';
+  statFps.textContent      = '0';
+  statAvgConf.textContent  = '0%';
+  gestureDisp.textContent  = '—';
+  confFill.style.width     = '0%';
+  confPct.textContent      = '0%';
+}
+
+// ── Load DB history on page load ───────────────────────────────────────────
+(async function loadInitialHistory() {
+  try {
+    const res  = await fetch("{{ url_for('gesture.history') }}");
+    const logs = await res.json();
+    if (!logs.length) return;
+    if (histEmpty) histEmpty.remove();
+    logs.forEach(l => {
+      const item = document.createElement('div');
+      item.className = 'flex items-center justify-between px-3 py-2 rounded-lg';
+      item.style.background = 'rgba(99,102,241,0.07)';
+      item.style.border     = '1px solid rgba(99,102,241,0.12)';
+      const col = l.confidence >= 85 ? '#10b981' : l.confidence >= 65 ? '#818cf8' : '#f59e0b';
+      item.innerHTML = `
+        <div class="flex items-center gap-2 min-w-0">
+          <i class="fa-solid fa-hand text-brand-400 text-xs flex-shrink-0"></i>
+          <span class="text-white text-xs font-medium truncate">${l.gesture_name}</span>
+        </div>
+        <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+          <span class="text-xs font-mono font-bold" style="color:${col}">${l.confidence}%</span>
+          <span class="text-slate-600 text-xs">${l.detected_at.split(' ')[1]}</span>
+        </div>`;
+      historyList.appendChild(item);
+    });
+    fetchStats();
+  } catch (_) {}
+})();
+
+// ══════════════════════════════════════════════════════════════════════════
+// IMAGE UPLOAD ANALYSER
+// ══════════════════════════════════════════════════════════════════════════
+
+let selectedImageFile = null;
+
+function handleImgSelect(event) {
+  const file = event.target.files[0];
+  if (file) loadImageFile(file);
+}
+
+function handleImgDrop(event) {
+  event.preventDefault();
+  document.getElementById('img-dropzone').classList.remove('drag-over');
+  const file = event.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadImageFile(file);
+}
+
+function loadImageFile(file) {
+  selectedImageFile = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('img-preview-original').src = e.target.result;
+    document.getElementById('img-preview-wrap').classList.remove('hidden');
+    document.getElementById('img-results').classList.add('hidden');
+    document.getElementById('img-error').classList.add('hidden');
+    document.getElementById('img-no-hand').classList.add('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analyseImage() {
+  if (!selectedImageFile) return;
+  const btn     = document.getElementById('img-analyse-btn');
+  const label   = document.getElementById('img-btn-label');
+  const spinner = document.getElementById('img-spinner');
+  btn.disabled  = true;
+  label.textContent = 'Analysing...';
+  spinner.classList.remove('hidden');
+  document.getElementById('img-results').classList.add('hidden');
+  document.getElementById('img-error').classList.add('hidden');
+  document.getElementById('img-no-hand').classList.add('hidden');
+
+  try {
+    const formData = new FormData();
+    formData.append('image', selectedImageFile);
+    const res  = await fetch("{{ url_for('gesture.analyze_image') }}", { method:'POST', body:formData });
+    const data = await res.json();
+
+    if (!res.ok || data.error) { showImgError(data.error || 'Analysis failed.'); return; }
+
+    if (data.annotated_image) {
+      document.getElementById('img-annotated').src = 'data:image/jpeg;base64,' + data.annotated_image;
+    }
+
+    const listEl = document.getElementById('img-gesture-list');
+    listEl.innerHTML = '';
+
+    if (!data.gestures || data.gestures.length === 0) {
+      document.getElementById('img-no-hand').classList.remove('hidden');
+    } else {
+      data.gestures.forEach(g => {
+        const col  = g.confidence >= 85 ? '#10b981' : g.confidence >= 65 ? '#818cf8' : g.confidence >= 45 ? '#f59e0b' : '#ef4444';
+        const card = document.createElement('div');
+        card.className = 'flex items-center gap-3 px-4 py-3 rounded-xl';
+        card.style.cssText = 'background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);';
+        card.innerHTML = `
+          <div class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-lg"
+               style="background:${col}18;border:1px solid ${col}44;">${getGestureEmoji(g.gesture)}</div>
+          <div class="flex-1 min-w-0">
+            <div class="text-white font-semibold text-sm truncate">${g.gesture}</div>
+            <div class="text-slate-500 text-xs">${g.side} Hand &middot; #${g.hand}</div>
+          </div>
+          <div class="flex flex-col items-end flex-shrink-0">
+            <span class="font-mono font-bold text-sm" style="color:${col}">${g.confidence}%</span>
+            <div class="w-16 h-1.5 rounded-full mt-1 overflow-hidden" style="background:rgba(255,255,255,0.08);">
+              <div style="width:${g.confidence}%;height:100%;background:${col};border-radius:9999px;"></div>
+            </div>
+          </div>`;
+        listEl.appendChild(card);
+        addHistoryItem(g.gesture, g.confidence);
+      });
+    }
+    document.getElementById('img-results').classList.remove('hidden');
+  } catch (_) {
+    showImgError('Network error. Please try again.');
+  } finally {
+    btn.disabled = false;
+    label.textContent = 'Analyse Gestures';
+    spinner.classList.add('hidden');
+  }
+}
+
+function showImgError(msg) {
+  document.getElementById('img-error-msg').textContent = msg;
+  document.getElementById('img-error').classList.remove('hidden');
+}
+
+function clearImageAnalysis() {
+  selectedImageFile = null;
+  document.getElementById('img-file-input').value = '';
+  document.getElementById('img-preview-wrap').classList.add('hidden');
+  document.getElementById('img-results').classList.add('hidden');
+  document.getElementById('img-error').classList.add('hidden');
+  document.getElementById('img-preview-original').src = '';
+  document.getElementById('img-annotated').src = '';
+}
+
+function getGestureEmoji(name) {
+  const map = {
+    'Flower':'🌸','Palm Open':'🖐','Fist':'✊','Thumbs Up':'👍','Thumbs Down':'👎',
+    'Victory':'✌️','OK Sign':'👌','Point':'☝️','Rock On':'🤘',
+    'Call Me':'🤙','Three':'3️⃣','Four':'4️⃣','Pinch':'🤏',
+    'I Love You':'🤟','Crossed Fingers':'🤞','Vulcan Salute':'🖖',
+    'Finger Heart':'🫰','Two':'2️⃣','Gun':'🔫','Claw Hand':'🦅',
+    'Middle Finger':'🖕','Pinky Up':'🤙','Shaka':'🤙',
+    'Five Fingers':'✋','Scissors':'✂️',
+  };
+  for (const [key, emoji] of Object.entries(map)) {
+    if (name.toLowerCase().includes(key.toLowerCase())) return emoji;
+  }
+  return '🤚';
+}
+</script>
+{% endblock %}

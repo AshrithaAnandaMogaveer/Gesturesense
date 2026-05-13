@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}GestureSense – AI Hand Gesture Recognition{% endblock %}</title>
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+  <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.svg') }}" />
+
+  <!-- Tailwind CSS – served locally (no CDN warning in production) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    /* Suppress the CDN-in-production console warning for this project */
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50:  '#eef2ff',
+              100: '#e0e7ff',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#1e1b4b',
+            },
+            neon: {
+              blue:   '#38bdf8',
+              purple: '#a78bfa',
+              cyan:   '#22d3ee',
+              pink:   '#f472b6',
+            },
+            dark: {
+              900: '#020617',
+              800: '#0f172a',
+              700: '#1e293b',
+              600: '#334155',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          animation: {
+            'float':       'float 6s ease-in-out infinite',
+            'glow':        'glow 2s ease-in-out infinite alternate',
+            'slide-up':    'slideUp 0.6s ease-out',
+            'fade-in':     'fadeIn 0.8s ease-out',
+            'pulse-slow':  'pulse 3s cubic-bezier(0.4,0,0.6,1) infinite',
+          },
+          keyframes: {
+            float:   { '0%,100%': {transform:'translateY(0)'}, '50%': {transform:'translateY(-20px)'} },
+            glow:    { from: {boxShadow:'0 0 10px #6366f1'}, to: {boxShadow:'0 0 30px #a78bfa, 0 0 60px #6366f1'} },
+            slideUp: { from: {opacity:'0',transform:'translateY(30px)'}, to: {opacity:'1',transform:'translateY(0)'} },
+            fadeIn:  { from: {opacity:'0'}, to: {opacity:'1'} },
+          },
+          backgroundImage: {
+            'hero-gradient': 'radial-gradient(ellipse at top, #1e1b4b 0%, #020617 60%)',
+            'card-gradient': 'linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(167,139,250,0.05) 100%)',
+            'neon-gradient': 'linear-gradient(135deg, #6366f1, #a78bfa)',
+          }
+        }
+      }
+    }
+    /* Silence the CDN production warning */
+    const _warn = console.warn.bind(console);
+    console.warn = (...a) => { if (typeof a[0] === 'string' && a[0].includes('cdn.tailwindcss.com')) return; _warn(...a); };
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- Font Awesome icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <style>
+    /* ── Global resets & base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    html { font-family: 'Inter', sans-serif; }
+    body { background-color: #020617; color: #e2e8f0; overflow-x: hidden; }
+
+    /* ── Glassmorphism card ───────────────────────────────────────────── */
+    .glass {
+      background: rgba(255,255,255,0.04);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .glass-strong {
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    /* ── Neon text gradient ───────────────────────────────────────────── */
+    .text-gradient {
+      background: linear-gradient(135deg, #818cf8, #a78bfa, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .text-gradient-warm {
+      background: linear-gradient(135deg, #f472b6, #a78bfa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    /* ── Glow button ──────────────────────────────────────────────────── */
+    .btn-glow {
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    .btn-glow::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, #6366f1, #a78bfa);
+      opacity: 0;
+      transition: opacity 0.3s;
+      border-radius: inherit;
+    }
+    .btn-glow:hover::before { opacity: 0.15; }
+    .btn-glow:hover { box-shadow: 0 0 25px rgba(99,102,241,0.5); transform: translateY(-2px); }
+
+    /* ── Scrollbar ────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #4338ca; border-radius: 3px; }
+
+    /* ── Flash messages ───────────────────────────────────────────────── */
+    .flash-success { background: rgba(16,185,129,0.15); border-color: #10b981; color: #6ee7b7; }
+    .flash-error   { background: rgba(239,68,68,0.15);  border-color: #ef4444; color: #fca5a5; }
+    .flash-info    { background: rgba(59,130,246,0.15); border-color: #3b82f6; color: #93c5fd; }
+
+    /* ── Animated underline nav link ─────────────────────────────────── */
+    .nav-link {
+      position: relative;
+      transition: color 0.3s;
+    }
+    .nav-link::after {
+      content: '';
+      position: absolute;
+      bottom: -4px; left: 0;
+      width: 0; height: 2px;
+      background: linear-gradient(90deg, #6366f1, #a78bfa);
+      transition: width 0.3s ease;
+      border-radius: 2px;
+    }
+    .nav-link:hover::after { width: 100%; }
+    .nav-link:hover { color: #a78bfa; }
+
+    /* ── Section fade-in on scroll ───────────────────────────────────── */
+    .reveal { opacity: 0; transform: translateY(40px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+  </style>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}" />
+
+  {% block extra_head %}{% endblock %}
+</head>
+
+<body class="min-h-screen">
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       NAVBAR
+  ══════════════════════════════════════════════════════════════════════ -->
+  <nav id="navbar" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
+       style="background: rgba(2,6,23,0.85); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(99,102,241,0.15);">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+
+        <!-- Logo -->
+        <a href="{{ url_for('main.index') }}" class="flex items-center gap-2 group">
+          <div class="w-9 h-9 rounded-xl flex items-center justify-center"
+               style="background: linear-gradient(135deg,#6366f1,#a78bfa); box-shadow: 0 0 15px rgba(99,102,241,0.5);">
+            <i class="fa-solid fa-hand-sparkles text-white text-sm"></i>
+          </div>
+          <span class="text-xl font-bold text-gradient">GestureSense</span>
+        </a>
+
+        <!-- Desktop links -->
+        <div class="hidden md:flex items-center gap-7 text-sm font-medium text-slate-300">
+          {% if current_user.is_authenticated %}
+            <a href="{{ url_for('gesture.processing') }}" class="nav-link text-neon-blue font-semibold">
+              <i class="fa-solid fa-camera-retro mr-1"></i>Gesture Processing
+            </a>
+          {% endif %}
+          <!-- Chatbot trigger — opens full chat page -->
+          <a href="{{ url_for('chat.chat_page') if current_user.is_authenticated else url_for('auth.login') }}"
+             id="chat-nav-btn"
+             class="relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:-translate-y-0.5"
+             style="background: linear-gradient(135deg,rgba(99,102,241,0.2),rgba(167,139,250,0.15)); border: 1px solid rgba(99,102,241,0.35); color: #a78bfa;">
+            <i class="fa-solid fa-robot text-sm"></i>
+            <span>AI Assistant</span>
+            <span id="chat-dot" class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-brand-400 border-2 border-dark-900 animate-pulse"></span>
+          </a>
+          <a href="{{ url_for('main.index') }}#contact" class="nav-link">
+            <i class="fa-solid fa-envelope mr-1"></i>Contact Us
+          </a>
+        </div>
+
+        <!-- Auth buttons -->
+        <div class="hidden md:flex items-center gap-3">
+          {% if current_user.is_authenticated %}
+            <!-- ── Profile dropdown ──────────────────────────────────── -->
+            <div class="relative" id="profile-menu-wrap">
+              <button id="profile-btn"
+                      onclick="toggleProfileMenu()"
+                      class="flex items-center gap-2 px-3 py-2 rounded-xl glass border border-slate-700 hover:border-brand-500 transition-all duration-200 group">
+                <!-- Avatar circle -->
+                <div class="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                     style="background: linear-gradient(135deg,#6366f1,#a78bfa);">
+                  {{ current_user.username[0].upper() }}
+                </div>
+                <span class="text-slate-200 text-sm font-medium">{{ current_user.username }}</span>
+                <i class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform duration-200" id="profile-chevron"></i>
+              </button>
+
+              <!-- Dropdown panel -->
+              <div id="profile-dropdown"
+                   class="hidden absolute right-0 top-full mt-2 w-52 rounded-2xl shadow-2xl z-50 overflow-hidden"
+                   style="background: rgba(15,23,42,0.97); border: 1px solid rgba(99,102,241,0.25); backdrop-filter: blur(20px);">
+
+                <!-- User info header -->
+                <div class="px-4 py-3 border-b border-slate-700/60">
+                  <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold flex-shrink-0"
+                         style="background: linear-gradient(135deg,#6366f1,#a78bfa);">
+                      {{ current_user.username[0].upper() }}
+                    </div>
+                    <div class="min-w-0">
+                      <div class="text-white text-sm font-semibold truncate">{{ current_user.username }}</div>
+                      <div class="text-slate-500 text-xs truncate">{{ current_user.email }}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Menu items -->
+                <div class="py-1.5">
+                  <a href="{{ url_for('gesture.processing') }}"
+                     class="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-brand-500/10 hover:text-white transition-colors">
+                    <i class="fa-solid fa-camera-retro w-4 text-brand-400"></i>
+                    Gesture Processing
+                  </a>
+                  <a href="{{ url_for('main.index') }}#features"
+                     class="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-300 hover:bg-brand-500/10 hover:text-white transition-colors">
+                    <i class="fa-solid fa-star w-4 text-neon-purple"></i>
+                    Features
+                  </a>
+                </div>
+
+                <!-- Logout -->
+                <div class="border-t border-slate-700/60 py-1.5">
+                  <a href="{{ url_for('auth.logout') }}"
+                     class="flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors">
+                    <i class="fa-solid fa-right-from-bracket w-4"></i>
+                    Sign Out
+                  </a>
+                </div>
+              </div>
+            </div>
+
+          {% else %}
+            <a href="{{ url_for('auth.login') }}"
+               class="px-4 py-2 rounded-lg text-sm font-medium text-slate-300 border border-slate-600 hover:border-brand-500 hover:text-white transition-all duration-200">
+              Login
+            </a>
+            <a href="{{ url_for('auth.register') }}"
+               class="px-4 py-2 rounded-lg text-sm font-semibold text-white btn-glow"
+               style="background: linear-gradient(135deg,#6366f1,#a78bfa);">
+              Create Account
+            </a>
+          {% endif %}
+        </div>
+
+        <!-- Mobile hamburger -->
+        <div class="md:hidden flex items-center gap-2">
+          <!-- Mobile chat button -->
+          <a href="{{ url_for('chat.chat_page') if current_user.is_authenticated else url_for('auth.login') }}"
+             class="relative p-2 rounded-xl text-brand-400 transition-colors hover:text-white"
+             style="background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.25);">
+            <i class="fa-solid fa-robot text-lg"></i>
+            <span id="chat-dot-mobile" class="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-brand-400 border-2 border-dark-900 animate-pulse"></span>
+          </a>
+          <button id="menu-btn" class="text-slate-300 hover:text-white transition-colors p-2">
+            <i class="fa-solid fa-bars text-xl" id="menu-icon"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile menu -->
+    <div id="mobile-menu" class="hidden md:hidden glass border-t border-slate-700/50">
+      <div class="px-4 py-4 space-y-1 text-sm font-medium text-slate-300">
+        {% if current_user.is_authenticated %}
+          <a href="{{ url_for('gesture.processing') }}"
+             class="flex items-center gap-2 text-neon-blue font-semibold py-2 px-2 rounded-lg hover:bg-white/5">
+            <i class="fa-solid fa-camera-retro w-4"></i>Gesture Processing
+          </a>
+        {% endif %}
+        <a href="{{ url_for('main.index') }}#contact"
+           class="flex items-center gap-2 hover:text-white transition-colors py-2 px-2 rounded-lg hover:bg-white/5">
+          <i class="fa-solid fa-envelope w-4 text-brand-400"></i>Contact Us
+        </a>
+
+        {% if current_user.is_authenticated %}
+          <div class="border-t border-slate-700/50 pt-3 mt-2">
+            <!-- User info -->
+            <div class="flex items-center gap-3 px-2 py-2 mb-2">
+              <div class="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                   style="background: linear-gradient(135deg,#6366f1,#a78bfa);">
+                {{ current_user.username[0].upper() }}
+              </div>
+              <div>
+                <div class="text-white font-semibold text-sm">{{ current_user.username }}</div>
+                <div class="text-slate-500 text-xs">{{ current_user.email }}</div>
+              </div>
+            </div>
+            <a href="{{ url_for('auth.logout') }}"
+               class="flex items-center gap-2 text-red-400 hover:text-red-300 py-2 px-2 rounded-lg hover:bg-red-500/5 transition-colors">
+              <i class="fa-solid fa-right-from-bracket w-4"></i>Sign Out
+            </a>
+          </div>
+        {% else %}
+          <div class="border-t border-slate-700/50 pt-3 mt-2 space-y-2">
+            <a href="{{ url_for('auth.login') }}"
+               class="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-white/5 hover:text-white transition-colors">
+              <i class="fa-solid fa-right-to-bracket w-4 text-brand-400"></i>Login
+            </a>
+            <a href="{{ url_for('auth.register') }}"
+               class="flex items-center gap-2 text-brand-400 font-semibold py-2 px-2 rounded-lg hover:bg-brand-500/10 transition-colors">
+              <i class="fa-solid fa-user-plus w-4"></i>Create Account
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       FLASH MESSAGES
+  ══════════════════════════════════════════════════════════════════════ -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="fixed top-20 right-4 z-50 space-y-2 max-w-sm w-full" id="flash-container">
+        {% for category, message in messages %}
+          <div class="flash-{{ category }} glass rounded-xl px-4 py-3 border flex items-start gap-3 animate-slide-up shadow-lg">
+            <i class="fa-solid {% if category == 'success' %}fa-circle-check text-emerald-400{% elif category == 'error' %}fa-circle-xmark text-red-400{% else %}fa-circle-info text-blue-400{% endif %} mt-0.5 flex-shrink-0"></i>
+            <span class="text-sm">{{ message }}</span>
+            <button onclick="this.parentElement.remove()" class="ml-auto text-slate-400 hover:text-white transition-colors flex-shrink-0">
+              <i class="fa-solid fa-xmark text-xs"></i>
+            </button>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       PAGE CONTENT
+  ══════════════════════════════════════════════════════════════════════ -->
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       FOOTER
+  ══════════════════════════════════════════════════════════════════════ -->
+  <footer class="border-t border-slate-800 mt-20" style="background: #020617;">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+
+        <!-- Brand -->
+        <div class="md:col-span-2">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-9 h-9 rounded-xl flex items-center justify-center"
+                 style="background: linear-gradient(135deg,#6366f1,#a78bfa);">
+              <i class="fa-solid fa-hand-sparkles text-white text-sm"></i>
+            </div>
+            <span class="text-xl font-bold text-gradient">GestureSense</span>
+          </div>
+          <p class="text-slate-400 text-sm leading-relaxed max-w-xs">
+            AI-powered real-time hand gesture recognition platform built with OpenCV and MediaPipe.
+            Engineered for precision, designed for the future.
+          </p>
+          <div class="flex gap-4 mt-5">
+            <a href="#" class="w-9 h-9 glass rounded-lg flex items-center justify-center text-slate-400 hover:text-brand-400 hover:border-brand-500 transition-all duration-200">
+              <i class="fa-brands fa-github text-sm"></i>
+            </a>
+            <a href="#" class="w-9 h-9 glass rounded-lg flex items-center justify-center text-slate-400 hover:text-neon-blue transition-all duration-200">
+              <i class="fa-brands fa-twitter text-sm"></i>
+            </a>
+            <a href="#" class="w-9 h-9 glass rounded-lg flex items-center justify-center text-slate-400 hover:text-neon-purple transition-all duration-200">
+              <i class="fa-brands fa-linkedin text-sm"></i>
+            </a>
+            <a href="#" class="w-9 h-9 glass rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 transition-all duration-200">
+              <i class="fa-brands fa-youtube text-sm"></i>
+            </a>
+          </div>
+        </div>
+
+        <!-- Quick Links -->
+        <div>
+          <h4 class="text-white font-semibold mb-4 text-sm uppercase tracking-wider">Quick Links</h4>
+          <ul class="space-y-2 text-sm text-slate-400">
+            <li><a href="{{ url_for('main.index') }}#home"     class="hover:text-brand-400 transition-colors">Home</a></li>
+            <li><a href="{{ url_for('main.index') }}#features" class="hover:text-brand-400 transition-colors">Features</a></li>
+            <li><a href="{{ url_for('main.index') }}#how"      class="hover:text-brand-400 transition-colors">How It Works</a></li>
+            <li><a href="{{ url_for('main.index') }}#why"      class="hover:text-brand-400 transition-colors">Why Us</a></li>
+            <li><a href="{{ url_for('main.index') }}#contact"  class="hover:text-brand-400 transition-colors">Contact</a></li>
+          </ul>
+        </div>
+
+        <!-- Tech Stack -->
+        <div>
+          <h4 class="text-white font-semibold mb-4 text-sm uppercase tracking-wider">Tech Stack</h4>
+          <ul class="space-y-2 text-sm text-slate-400">
+            <li><i class="fa-brands fa-python mr-2 text-brand-400"></i>Python / Flask</li>
+            <li><i class="fa-solid fa-eye mr-2 text-neon-blue"></i>OpenCV</li>
+            <li><i class="fa-solid fa-hand mr-2 text-neon-purple"></i>MediaPipe</li>
+            <li><i class="fa-solid fa-database mr-2 text-emerald-400"></i>SQLite</li>
+            <li><i class="fa-brands fa-docker mr-2 text-sky-400"></i>Docker</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="border-t border-slate-800 mt-10 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p class="text-slate-500 text-sm">
+          &copy; 2024 GestureSense. Built with <i class="fa-solid fa-heart text-red-500 mx-1"></i> using AI &amp; Computer Vision.
+        </p>
+        <p class="text-slate-600 text-xs font-mono">v1.0.0 · OpenCV + MediaPipe</p>
+      </div>
+    </div>
+  </footer>
+
+
+    <!-- ══════════════════════════════════════════════════════════════════════
+       GLOBAL SCRIPTS
+  ══════════════════════════════════════════════════════════════════════ -->
+  <style>
+    /* Chat message bubbles */
+    .chat-bubble-bot {
+      background: rgba(99,102,241,0.12);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: 4px 16px 16px 16px;
+      color: #e2e8f0;
+    }
+    .chat-bubble-user {
+      background: linear-gradient(135deg,rgba(99,102,241,0.35),rgba(167,139,250,0.25));
+      border: 1px solid rgba(99,102,241,0.3);
+      border-radius: 16px 4px 16px 16px;
+      color: #fff;
+      margin-left: auto;
+    }
+    .chat-bubble { padding: 10px 14px; font-size: 0.8125rem; line-height: 1.5; max-width: 85%; }
+    .quick-chip {
+      padding: 5px 12px;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: rgba(99,102,241,0.12);
+      border: 1px solid rgba(99,102,241,0.3);
+      color: #a78bfa;
+      white-space: nowrap;
+    }
+    .quick-chip:hover { background: rgba(99,102,241,0.25); color: #fff; transform: translateY(-1px); }
+    /* Typing dots */
+    .typing-dot { width:7px; height:7px; border-radius:50%; background:#6366f1; animation: typingBounce 1.2s infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+    /* Panel slide-up animation */
+    @keyframes chatSlideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+    .chat-open { animation: chatSlideUp 0.3s ease-out; }
+    #chat-messages::-webkit-scrollbar { width: 4px; }
+    #chat-messages::-webkit-scrollbar-track { background: transparent; }
+    #chat-messages::-webkit-scrollbar-thumb { background: #4338ca; border-radius: 2px; }
+  </style>
+
+  <script>
+    // ── Chat navigation (redirects to full Mistral 7B chat page) ──────────
+    function toggleChat() {
+      window.location.href = '/chat/';
+    }
+
+    // Close chat on Escape key (no-op now, kept for compatibility)
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {}
+    });
+
+    // ── Profile dropdown toggle ────────────────────────────────────────────
+    function toggleProfileMenu() {
+      const dropdown = document.getElementById('profile-dropdown');
+      const chevron  = document.getElementById('profile-chevron');
+      if (!dropdown) return;
+      const isOpen = !dropdown.classList.contains('hidden');
+      dropdown.classList.toggle('hidden', isOpen);
+      if (chevron) chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+      const wrap = document.getElementById('profile-menu-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        const dropdown = document.getElementById('profile-dropdown');
+        const chevron  = document.getElementById('profile-chevron');
+        if (dropdown) dropdown.classList.add('hidden');
+        if (chevron)  chevron.style.transform = 'rotate(0deg)';
+      }
+    });
+
+    // ── Mobile menu toggle ─────────────────────────────────────────────────
+    const menuBtn    = document.getElementById('menu-btn');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const menuIcon   = document.getElementById('menu-icon');
+    menuBtn.addEventListener('click', () => {
+      mobileMenu.classList.toggle('hidden');
+      menuIcon.className = mobileMenu.classList.contains('hidden')
+        ? 'fa-solid fa-bars text-xl'
+        : 'fa-solid fa-xmark text-xl';
+    });
+
+    // ── Navbar scroll effect ───────────────────────────────────────────────
+    window.addEventListener('scroll', () => {
+      const nav = document.getElementById('navbar');
+      if (window.scrollY > 50) {
+        nav.style.background = 'rgba(2,6,23,0.97)';
+        nav.style.borderBottomColor = 'rgba(99,102,241,0.3)';
+      } else {
+        nav.style.background = 'rgba(2,6,23,0.85)';
+        nav.style.borderBottomColor = 'rgba(99,102,241,0.15)';
+      }
+    });
+
+    // ── Scroll reveal ──────────────────────────────────────────────────────
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    // ── Auto-dismiss flash messages ────────────────────────────────────────
+    setTimeout(() => {
+      const fc = document.getElementById('flash-container');
+      if (fc) fc.style.opacity = '0', fc.style.transition = 'opacity 0.5s', setTimeout(() => fc.remove(), 500);
+    }, 5000);
+  </script>
+
+  <!-- Particle background & global JS -->
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

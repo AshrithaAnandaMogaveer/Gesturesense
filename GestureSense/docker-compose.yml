@@ -1,0 +1,27 @@
+version: '3.9'
+
+services:
+  gesturesense:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gesturesense-app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-gestures3ns3-dev-key}
+      - DATABASE_URL=sqlite:///database.db
+      - FLASK_ENV=production
+    volumes:
+      - ./database.db:/app/database.db   # persist SQLite DB
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+    name: gesturesense-network

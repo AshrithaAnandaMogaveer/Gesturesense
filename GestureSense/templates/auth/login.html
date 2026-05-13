@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}Login – GestureSense{% endblock %}
+
+{% block extra_head %}
+<style>
+  .field-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    color: #e2e8f0;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    background: rgba(255,255,255,0.05);
+    border: 1.5px solid rgba(255,255,255,0.1);
+  }
+  .field-input::placeholder { color: #475569; }
+  .field-input:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
+    background: rgba(99,102,241,0.06);
+  }
+  .field-input.is-valid  { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,0.12); }
+  .field-input.is-error  { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,0.12); }
+  .field-input.has-icon  { padding-right: 3rem; }
+
+  .field-msg {
+    font-size: 0.75rem;
+    margin-top: 0.35rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-height: 1.1rem;
+  }
+  .field-msg.error   { color: #f87171; }
+  .field-msg.success { color: #34d399; }
+  .field-msg.hint    { color: #64748b; }
+
+  /* Shake animation for credentials error */
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20%,60% { transform: translateX(-6px); }
+    40%,80% { transform: translateX(6px); }
+  }
+  .shake { animation: shake 0.4s ease; }
+
+  /* Submit loading */
+  .btn-submit .spinner {
+    display: none;
+    width: 18px; height: 18px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .btn-submit.loading .btn-label { display: none; }
+  .btn-submit.loading .spinner   { display: block; }
+  .btn-submit.loading { pointer-events: none; opacity: 0.8; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="min-h-screen flex items-center justify-center px-4 py-24 relative">
+
+  <!-- Background glow -->
+  <div class="absolute inset-0 pointer-events-none overflow-hidden">
+    <div class="absolute top-1/3 left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full opacity-10 blur-3xl"
+         style="background: radial-gradient(circle, #a78bfa, transparent);"></div>
+    <div class="absolute bottom-1/4 left-1/4 w-64 h-64 rounded-full opacity-8 blur-3xl"
+         style="background: radial-gradient(circle, #6366f1, transparent);"></div>
+  </div>
+
+  <div class="relative w-full max-w-md animate-slide-up">
+
+    <!-- Card -->
+    <div class="glass-strong rounded-3xl p-8 sm:p-10"
+         style="border: 1px solid rgba(167,139,250,0.25); box-shadow: 0 0 60px rgba(167,139,250,0.1);">
+
+      <!-- Header -->
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+             style="background: linear-gradient(135deg,#a78bfa,#6366f1); box-shadow: 0 0 25px rgba(167,139,250,0.4);">
+          <i class="fa-solid fa-right-to-bracket text-white text-2xl"></i>
+        </div>
+        <h1 class="text-2xl font-black text-white mb-1">Welcome Back</h1>
+        <p class="text-slate-400 text-sm">Sign in to your GestureSense account</p>
+      </div>
+
+      <!-- Credentials error banner -->
+      {% if errors.get('credentials') %}
+      <div id="cred-banner" class="flex items-center gap-3 px-4 py-3 rounded-xl mb-5 shake"
+           style="background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35);">
+        <i class="fa-solid fa-circle-xmark text-red-400 flex-shrink-0"></i>
+        <span class="text-red-300 text-sm">{{ errors.credentials }}</span>
+      </div>
+      {% endif %}
+
+      <!-- Form -->
+      <form id="login-form" method="POST" action="{{ url_for('auth.login') }}"
+            class="space-y-5" novalidate>
+
+        <!-- Username / Email -->
+        <div>
+          <label for="username" class="block text-slate-300 text-sm font-medium mb-2">
+            <i class="fa-solid fa-user mr-2 text-brand-400"></i>Username or Email
+          </label>
+          <div class="relative">
+            <input
+              type="text" id="username" name="username"
+              value="{{ form_data.username }}"
+              placeholder="Enter your username or email"
+              autocomplete="username"
+              class="field-input has-icon {% if errors.get('username') %}is-error{% elif form_data.username and not errors.get('credentials') %}is-valid{% endif %}"
+            />
+            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-base" id="username-icon">
+              {% if errors.get('username') %}
+                <i class="fa-solid fa-circle-xmark text-red-400"></i>
+              {% elif form_data.username and not errors.get('credentials') %}
+                <i class="fa-solid fa-circle-check text-emerald-400"></i>
+              {% endif %}
+            </span>
+          </div>
+          <p class="field-msg {% if errors.get('username') %}error{% else %}hint{% endif %}" id="username-msg">
+            {% if errors.get('username') %}
+              <i class="fa-solid fa-triangle-exclamation"></i> {{ errors.username }}
+            {% else %}
+              <i class="fa-solid fa-circle-info"></i> Use the username or email you registered with.
+            {% endif %}
+          </p>
+        </div>
+
+        <!-- Password -->
+        <div>
+          <label for="password" class="block text-slate-300 text-sm font-medium mb-2">
+            <i class="fa-solid fa-lock mr-2 text-brand-400"></i>Password
+          </label>
+          <div class="relative">
+            <input
+              type="password" id="password" name="password"
+              placeholder="Your password"
+              autocomplete="current-password"
+              class="field-input has-icon {% if errors.get('password') or errors.get('credentials') %}is-error{% endif %}"
+            />
+            <button type="button" onclick="togglePwd()"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors">
+              <i class="fa-solid fa-eye text-sm" id="eye-icon"></i>
+            </button>
+          </div>
+          <p class="field-msg {% if errors.get('password') %}error{% else %}hint{% endif %}" id="password-msg">
+            {% if errors.get('password') %}
+              <i class="fa-solid fa-triangle-exclamation"></i> {{ errors.password }}
+            {% else %}
+              <i class="fa-solid fa-circle-info"></i> Your account password.
+            {% endif %}
+          </p>
+        </div>
+
+        <!-- Remember me -->
+        <div class="flex items-center">
+          <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" name="remember" id="remember"
+                   class="w-4 h-4 rounded accent-brand-500 cursor-pointer" />
+            <span class="text-slate-400 text-sm">Keep me signed in</span>
+          </label>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit" id="submit-btn"
+                class="btn-submit btn-glow w-full py-3.5 rounded-xl font-semibold text-white transition-all duration-300 flex items-center justify-center gap-2"
+                style="background: linear-gradient(135deg,#a78bfa,#6366f1); box-shadow: 0 0 20px rgba(167,139,250,0.3);">
+          <span class="btn-label flex items-center gap-2">
+            <i class="fa-solid fa-right-to-bracket"></i> Sign In
+          </span>
+          <div class="spinner"></div>
+        </button>
+      </form>
+
+      <!-- Divider -->
+      <div class="flex items-center gap-3 my-6">
+        <div class="flex-1 h-px bg-slate-700/60"></div>
+        <span class="text-slate-500 text-xs">Don't have an account?</span>
+        <div class="flex-1 h-px bg-slate-700/60"></div>
+      </div>
+
+      <a href="{{ url_for('auth.register') }}"
+         class="block w-full py-3 rounded-xl text-center text-sm font-medium text-slate-300 glass border border-slate-600 hover:border-brand-500 hover:text-white transition-all duration-200">
+        <i class="fa-solid fa-user-plus mr-2"></i>Create Free Account
+      </a>
+    </div>
+
+    <!-- Back to home -->
+    <div class="text-center mt-6">
+      <a href="{{ url_for('main.index') }}" class="text-slate-500 text-sm hover:text-brand-400 transition-colors">
+        <i class="fa-solid fa-arrow-left mr-1"></i>Back to Home
+      </a>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function togglePwd() {
+  const input = document.getElementById('password');
+  const icon  = document.getElementById('eye-icon');
+  input.type  = input.type === 'password' ? 'text' : 'password';
+  icon.className = input.type === 'password' ? 'fa-solid fa-eye text-sm' : 'fa-solid fa-eye-slash text-sm';
+}
+
+function setFieldState(inputEl, iconEl, msgEl, state, message) {
+  inputEl.classList.remove('is-valid', 'is-error');
+  if (state === 'error')   inputEl.classList.add('is-error');
+  if (state === 'success') inputEl.classList.add('is-valid');
+  if (iconEl) {
+    iconEl.innerHTML = state === 'error'
+      ? '<i class="fa-solid fa-circle-xmark text-red-400"></i>'
+      : state === 'success'
+      ? '<i class="fa-solid fa-circle-check text-emerald-400"></i>'
+      : '';
+  }
+  if (msgEl) {
+    msgEl.className = 'field-msg ' + (state === 'error' ? 'error' : state === 'success' ? 'success' : 'hint');
+    const icon = state === 'error' ? 'fa-triangle-exclamation' : state === 'success' ? 'fa-circle-check' : 'fa-circle-info';
+    msgEl.innerHTML = `<i class="fa-solid ${icon}"></i> ${message}`;
+  }
+}
+
+const usernameInput = document.getElementById('username');
+const usernameIcon  = document.getElementById('username-icon');
+const usernameMsg   = document.getElementById('username-msg');
+const passwordInput = document.getElementById('password');
+const passwordMsg   = document.getElementById('password-msg');
+
+usernameInput.addEventListener('input', () => {
+  const v = usernameInput.value.trim();
+  if (!v) setFieldState(usernameInput, usernameIcon, usernameMsg, 'hint', 'Use the username or email you registered with.');
+  else    setFieldState(usernameInput, usernameIcon, usernameMsg, 'success', 'Looks good.');
+});
+
+passwordInput.addEventListener('input', () => {
+  passwordInput.classList.remove('is-error');
+  passwordMsg.className = 'field-msg hint';
+  passwordMsg.innerHTML = '<i class="fa-solid fa-circle-info"></i> Your account password.';
+});
+
+document.getElementById('login-form').addEventListener('submit', function(e) {
+  let valid = true;
+  if (!usernameInput.value.trim()) {
+    setFieldState(usernameInput, usernameIcon, usernameMsg, 'error', 'Username or email is required.');
+    valid = false;
+  }
+  if (!passwordInput.value) {
+    setFieldState(passwordInput, null, passwordMsg, 'error', 'Password is required.');
+    valid = false;
+  }
+  if (!valid) { e.preventDefault(); return; }
+  document.getElementById('submit-btn').classList.add('loading');
+});
+</script>
+{% endblock %}

@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+{% block title %}GestureSense – AI Hand Gesture Recognition{% endblock %}
+
+{% block content %}
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     HERO SECTION
+════════════════════════════════════════════════════════════════════════ -->
+<section id="home" class="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
+
+  <!-- Background glow orbs -->
+  <div class="absolute inset-0 pointer-events-none">
+    <div class="absolute top-1/4 left-1/4 w-96 h-96 rounded-full opacity-20 blur-3xl animate-pulse-slow"
+         style="background: radial-gradient(circle, #6366f1, transparent);"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-80 h-80 rounded-full opacity-15 blur-3xl animate-pulse-slow"
+         style="background: radial-gradient(circle, #a78bfa, transparent); animation-delay: 1.5s;"></div>
+    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full opacity-5 blur-3xl"
+         style="background: radial-gradient(circle, #38bdf8, transparent);"></div>
+    <!-- Grid overlay -->
+    <div class="absolute inset-0 opacity-5"
+         style="background-image: linear-gradient(rgba(99,102,241,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,0.3) 1px, transparent 1px); background-size: 60px 60px;"></div>
+  </div>
+
+  <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 grid lg:grid-cols-2 gap-16 items-center">
+
+    <!-- Left: Text content -->
+    <div class="animate-slide-up">
+      <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-brand-500/30 text-brand-400 text-xs font-semibold uppercase tracking-widest mb-6">
+        <span class="w-2 h-2 rounded-full bg-brand-400 animate-pulse"></span>
+        AI-Powered · Real-Time · Computer Vision
+      </div>
+
+      <h1 class="text-4xl sm:text-5xl lg:text-6xl font-black leading-tight mb-6">
+        Real-Time AI<br/>
+        <span class="text-gradient">Hand Gesture</span><br/>
+        Recognition
+      </h1>
+
+      <p class="text-slate-400 text-lg leading-relaxed mb-8 max-w-lg">
+        Powered by OpenCV &amp; MediaPipe. Detect, classify, and interpret hand gestures
+        instantly through your webcam — no hardware required.
+      </p>
+
+      <div class="flex flex-wrap gap-4">
+        {% if current_user.is_authenticated %}
+          <a href="{{ url_for('gesture.processing') }}"
+             class="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-white btn-glow transition-all duration-300"
+             style="background: linear-gradient(135deg,#6366f1,#a78bfa); box-shadow: 0 0 20px rgba(99,102,241,0.4);">
+            <i class="fa-solid fa-camera-retro"></i> Start Detection
+          </a>
+        {% else %}
+          <a href="{{ url_for('auth.register') }}"
+             class="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-white btn-glow transition-all duration-300"
+             style="background: linear-gradient(135deg,#6366f1,#a78bfa); box-shadow: 0 0 20px rgba(99,102,241,0.4);">
+            <i class="fa-solid fa-rocket"></i> Start Detection
+          </a>
+        {% endif %}
+        <a href="#how"
+           class="inline-flex items-center gap-2 px-7 py-3.5 rounded-xl font-semibold text-slate-300 glass border border-slate-600 hover:border-brand-500 hover:text-white transition-all duration-300">
+          <i class="fa-solid fa-circle-play"></i> Learn More
+        </a>
+      </div>
+    </div>
+
+    <!-- Right: AI visual -->
+    <div class="flex justify-center items-center animate-float">
+      <div class="relative">
+        <!-- Outer glow ring -->
+        <div class="absolute inset-0 rounded-full opacity-30 blur-2xl animate-glow"
+             style="background: radial-gradient(circle, #6366f1, #a78bfa);"></div>
+
+        <!-- Main card -->
+        <div class="relative glass-strong rounded-3xl p-8 w-80 h-80 flex flex-col items-center justify-center gap-4"
+             style="border: 1px solid rgba(99,102,241,0.3); box-shadow: 0 0 40px rgba(99,102,241,0.2);">
+
+          <!-- Hand icon -->
+          <div class="w-24 h-24 rounded-2xl flex items-center justify-center mb-2"
+               style="background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(167,139,250,0.2)); border: 1px solid rgba(99,102,241,0.4);">
+            <i class="fa-solid fa-hand-sparkles text-5xl text-gradient"></i>
+          </div>
+
+          <!-- Scanning animation -->
+          <div class="w-full h-1 rounded-full overflow-hidden" style="background: rgba(99,102,241,0.2);">
+            <div class="h-full rounded-full animate-pulse"
+                 style="background: linear-gradient(90deg, #6366f1, #a78bfa); width: 70%;"></div>
+          </div>
+
+          <div class="text-center">
+            <div class="text-neon-blue font-mono text-sm font-semibold">SCANNING...</div>
+            <div class="text-slate-400 text-xs mt-1">MediaPipe · 21 Landmarks</div>
+          </div>
+
+          <!-- Landmark dots decoration -->
+          <div class="absolute top-4 right-4 flex gap-1">
+            <span class="w-2 h-2 rounded-full bg-brand-400 animate-pulse"></span>
+            <span class="w-2 h-2 rounded-full bg-neon-purple animate-pulse" style="animation-delay:0.3s"></span>
+            <span class="w-2 h-2 rounded-full bg-neon-cyan animate-pulse" style="animation-delay:0.6s"></span>
+          </div>
+
+          <!-- Corner brackets -->
+          <div class="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-brand-400 rounded-tl-lg opacity-60"></div>
+          <div class="absolute top-3 right-3 w-6 h-6 border-t-2 border-r-2 border-brand-400 rounded-tr-lg opacity-60"></div>
+          <div class="absolute bottom-3 left-3 w-6 h-6 border-b-2 border-l-2 border-brand-400 rounded-bl-lg opacity-60"></div>
+          <div class="absolute bottom-3 right-3 w-6 h-6 border-b-2 border-r-2 border-brand-400 rounded-br-lg opacity-60"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scroll indicator -->
+  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-slate-500 text-xs animate-bounce">
+    <span>Scroll Down</span>
+    <i class="fa-solid fa-chevron-down"></i>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     HOW IT WORKS
+════════════════════════════════════════════════════════════════════════ -->
+<section id="how" class="py-24 relative">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    <div class="text-center mb-16 reveal">
+      <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-brand-500/30 text-brand-400 text-xs font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-diagram-project"></i> Process Flow
+      </div>
+      <h2 class="text-4xl font-black text-white mb-4">How It <span class="text-gradient">Works</span></h2>
+      <p class="text-slate-400 max-w-xl mx-auto">Six simple steps from account creation to real-time gesture detection.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {% set steps = [
+        ('1', 'fa-user-plus',      'Create Account',        'Register with your email and a secure password to get started.',          '#6366f1'),
+        ('2', 'fa-lock',           'Login Securely',        'Authenticate with hashed credentials and session management.',            '#a78bfa'),
+        ('3', 'fa-hand-pointer',   'Open Gesture Page',     'Navigate to the Gesture Processing dashboard.',                          '#38bdf8'),
+        ('4', 'fa-video',          'Allow Webcam Access',   'Grant browser permission to access your camera feed.',                   '#22d3ee'),
+        ('5', 'fa-brain',          'AI Detects Gesture',    'MediaPipe maps 21 hand landmarks; our classifier identifies the gesture.','#f472b6'),
+        ('6', 'fa-chart-bar',      'View Results',          'See the gesture name, confidence score, and detection history.',         '#818cf8'),
+      ] %}
+
+      {% for num, icon, title, desc, color in steps %}
+      <div class="reveal glass rounded-2xl p-6 group hover:border-brand-500/50 transition-all duration-300 hover:-translate-y-1"
+           style="border: 1px solid rgba(255,255,255,0.06);">
+        <div class="flex items-start gap-4">
+          <div class="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-white font-black text-lg"
+               style="background: linear-gradient(135deg, {{ color }}33, {{ color }}11); border: 1px solid {{ color }}44;">
+            <i class="fa-solid {{ icon }}" style="color: {{ color }};"></i>
+          </div>
+          <div>
+            <div class="text-xs font-mono text-slate-500 mb-1">Step {{ num }}</div>
+            <h3 class="text-white font-bold mb-2 group-hover:text-gradient transition-all">{{ title }}</h3>
+            <p class="text-slate-400 text-sm leading-relaxed">{{ desc }}</p>
+          </div>
+        </div>
+        <!-- Connector line (hidden on last items) -->
+        {% if not loop.last %}
+        <div class="mt-4 h-px w-full opacity-20" style="background: linear-gradient(90deg, {{ color }}, transparent);"></div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     FEATURES
+════════════════════════════════════════════════════════════════════════ -->
+<section id="features" class="py-24 relative">
+  <!-- Background accent -->
+  <div class="absolute inset-0 pointer-events-none overflow-hidden">
+    <div class="absolute top-0 left-0 right-0 h-px" style="background: linear-gradient(90deg, transparent, #6366f1, transparent);"></div>
+    <div class="absolute bottom-0 left-0 right-0 h-px" style="background: linear-gradient(90deg, transparent, #a78bfa, transparent);"></div>
+  </div>
+
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center mb-16 reveal">
+      <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-brand-500/30 text-brand-400 text-xs font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-star"></i> Platform Features
+      </div>
+      <h2 class="text-4xl font-black text-white mb-4">Powerful <span class="text-gradient">Features</span></h2>
+      <p class="text-slate-400 max-w-xl mx-auto">Everything you need for production-grade gesture recognition.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {% set features = [
+        ('fa-bolt',           'Real-Time Detection',      'Process 30 frames per second with sub-50ms latency.',                '#f59e0b'),
+        ('fa-brain',          'AI-Powered',               'MediaPipe neural network with 21-point hand landmark model.',        '#6366f1'),
+        ('fa-shield-halved',  'Secure Auth',              'Bcrypt password hashing, session tokens, CSRF protection.',          '#10b981'),
+        ('fa-gauge-high',     'Fast Processing',          'Optimised OpenCV pipeline for smooth real-time performance.',        '#38bdf8'),
+        ('fa-mobile-screen',  'Responsive UI',            'Pixel-perfect on mobile, tablet, and desktop screens.',              '#a78bfa'),
+        ('fa-eye',            'OpenCV Integration',       'Industry-standard computer vision library for frame processing.',    '#f472b6'),
+        ('fa-hand',           'MediaPipe Tracking',       '21 hand landmarks detected with high precision per frame.',          '#22d3ee'),
+        ('fa-docker',         'Docker Ready',             'Containerised architecture for one-command deployment.',             '#0ea5e9'),
+      ] %}
+
+      {% for icon, title, desc, color in features %}
+      <div class="reveal glass rounded-2xl p-5 group hover:border-brand-500/40 transition-all duration-300 hover:-translate-y-2 cursor-default"
+           style="border: 1px solid rgba(255,255,255,0.06);">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center mb-4"
+             style="background: {{ color }}22; border: 1px solid {{ color }}44;">
+          <i class="fa-solid {{ icon }} text-lg" style="color: {{ color }};"></i>
+        </div>
+        <h3 class="text-white font-bold text-sm mb-2">{{ title }}</h3>
+        <p class="text-slate-400 text-xs leading-relaxed">{{ desc }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     WHY US
+════════════════════════════════════════════════════════════════════════ -->
+<section id="why" class="py-24">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    <div class="text-center mb-16 reveal">
+      <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-brand-500/30 text-brand-400 text-xs font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-trophy"></i> Why Choose Us
+      </div>
+      <h2 class="text-4xl font-black text-white mb-4">Built for <span class="text-gradient">Excellence</span></h2>
+      <p class="text-slate-400 max-w-xl mx-auto">GestureSense combines cutting-edge AI with production-grade engineering.</p>
+    </div>
+
+    <!-- Reasons grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {% set reasons = [
+        ('fa-crosshairs',     'High Accuracy',          'Trained landmark model achieves near-perfect gesture classification.',    '#6366f1'),
+        ('fa-clock',          'Real-Time Processing',   'Optimised pipeline ensures zero-lag gesture feedback.',                  '#a78bfa'),
+        ('fa-lock',           'Secure Platform',        'End-to-end security with hashed passwords and session management.',      '#10b981'),
+        ('fa-microchip',      'Modern AI Architecture', 'Built on Google MediaPipe — the same tech used in production apps.',     '#38bdf8'),
+        ('fa-tachometer-alt', 'Fast Response Time',     'Sub-50ms detection latency for a seamless user experience.',             '#f59e0b'),
+        ('fa-expand-arrows-alt','Scalable Deployment',  'Docker + Jenkins CI/CD pipeline ready for cloud deployment.',            '#f472b6'),
+      ] %}
+      {% for icon, title, desc, color in reasons %}
+      <div class="reveal glass rounded-2xl p-6 flex gap-4 group hover:border-brand-500/40 transition-all duration-300 hover:-translate-y-1"
+           style="border: 1px solid rgba(255,255,255,0.06);">
+        <div class="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+             style="background: {{ color }}22; border: 1px solid {{ color }}44;">
+          <i class="fa-solid {{ icon }}" style="color: {{ color }};"></i>
+        </div>
+        <div>
+          <h3 class="text-white font-bold text-sm mb-1">{{ title }}</h3>
+          <p class="text-slate-400 text-xs leading-relaxed">{{ desc }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     CONTACT
+════════════════════════════════════════════════════════════════════════ -->
+<section id="contact" class="py-24">
+  <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+
+    <div class="text-center mb-12 reveal">
+      <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-brand-500/30 text-brand-400 text-xs font-semibold uppercase tracking-widest mb-4">
+        <i class="fa-solid fa-envelope"></i> Get In Touch
+      </div>
+      <h2 class="text-4xl font-black text-white mb-4">Contact <span class="text-gradient">Us</span></h2>
+      <p class="text-slate-400">Have questions or feedback? We'd love to hear from you.</p>
+    </div>
+
+    <div class="reveal glass-strong rounded-3xl p-8 sm:p-10" style="border: 1px solid rgba(99,102,241,0.2);">
+
+      <!-- ── Success state ─────────────────────────────────────────────── -->
+      <div id="contact-success" class="hidden text-center py-8">
+        <div class="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-5"
+             style="background: rgba(16,185,129,0.15); border: 1px solid rgba(16,185,129,0.35);">
+          <i class="fa-solid fa-circle-check text-3xl text-emerald-400"></i>
+        </div>
+        <h3 class="text-white text-xl font-black mb-2">Message Sent!</h3>
+        <p class="text-slate-400 text-sm mb-6">Thanks for reaching out. We'll get back to you soon.</p>
+        <button onclick="resetContact()"
+                class="px-6 py-2.5 rounded-xl text-sm font-semibold text-slate-300 glass border border-slate-600 hover:border-brand-500 hover:text-white transition-all duration-200">
+          <i class="fa-solid fa-rotate-left mr-2"></i>Send Another
+        </button>
+      </div>
+
+      <!-- ── Error banner ──────────────────────────────────────────────── -->
+      <div id="contact-error" class="hidden mb-5 px-4 py-3 rounded-xl text-sm text-red-300 flex items-center gap-3"
+           style="background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);">
+        <i class="fa-solid fa-circle-xmark text-red-400 flex-shrink-0"></i>
+        <span id="contact-error-msg">Something went wrong. Please try again.</span>
+      </div>
+
+      <!-- ── Form ──────────────────────────────────────────────────────── -->
+      <!--
+        FORMSPREE SETUP:
+        1. Go to https://formspree.io and create a free account
+        2. Create a new form and copy your Form ID
+        3. Replace YOUR_FORM_ID below with your actual ID (e.g. xpwzgkqr)
+      -->
+      <form id="contact-form" class="space-y-5" novalidate>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+          <!-- Name -->
+          <div>
+            <label class="block text-slate-300 text-sm font-medium mb-2">
+              <i class="fa-solid fa-user mr-2 text-brand-400"></i>Name
+            </label>
+            <input type="text" id="c-name" name="name" required
+                   placeholder="Your full name" autocomplete="name"
+                   class="c-input w-full px-4 py-3 rounded-xl text-white text-sm placeholder-slate-500 outline-none transition-all"
+                   style="background:rgba(255,255,255,0.05); border:1.5px solid rgba(255,255,255,0.1);" />
+            <p class="c-err hidden mt-1.5 text-xs text-red-400 flex items-center gap-1" id="err-name">
+              <i class="fa-solid fa-triangle-exclamation"></i><span></span>
+            </p>
+          </div>
+
+          <!-- Email -->
+          <div>
+            <label class="block text-slate-300 text-sm font-medium mb-2">
+              <i class="fa-solid fa-envelope mr-2 text-brand-400"></i>Email
+            </label>
+            <input type="email" id="c-email" name="email" required
+                   placeholder="your@email.com" autocomplete="email"
+                   class="c-input w-full px-4 py-3 rounded-xl text-white text-sm placeholder-slate-500 outline-none transition-all"
+                   style="background:rgba(255,255,255,0.05); border:1.5px solid rgba(255,255,255,0.1);" />
+            <p class="c-err hidden mt-1.5 text-xs text-red-400 flex items-center gap-1" id="err-email">
+              <i class="fa-solid fa-triangle-exclamation"></i><span></span>
+            </p>
+          </div>
+        </div>
+
+        <!-- Message -->
+        <div>
+          <label class="block text-slate-300 text-sm font-medium mb-2">
+            <i class="fa-solid fa-message mr-2 text-brand-400"></i>Message
+          </label>
+          <textarea id="c-message" name="message" rows="5" required
+                    placeholder="Your message..."
+                    class="c-input w-full px-4 py-3 rounded-xl text-white text-sm placeholder-slate-500 outline-none transition-all resize-none"
+                    style="background:rgba(255,255,255,0.05); border:1.5px solid rgba(255,255,255,0.1);"></textarea>
+          <div class="flex justify-between mt-1.5">
+            <p class="c-err hidden text-xs text-red-400 flex items-center gap-1" id="err-message">
+              <i class="fa-solid fa-triangle-exclamation"></i><span></span>
+            </p>
+            <span id="c-chars" class="text-xs text-slate-600 ml-auto">0 / 2000</span>
+          </div>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit" id="c-submit"
+                class="w-full py-3.5 rounded-xl font-semibold text-white btn-glow transition-all duration-300 flex items-center justify-center gap-2"
+                style="background:linear-gradient(135deg,#6366f1,#a78bfa); box-shadow:0 0 20px rgba(99,102,241,0.3);">
+          <span id="c-btn-label" class="flex items-center gap-2">
+            <i class="fa-solid fa-paper-plane"></i> Send Message
+          </span>
+          <div id="c-spinner" class="hidden w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+               style="animation:spin 0.7s linear infinite;"></div>
+        </button>
+
+      </form>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  // ── Replace with your Formspree Form ID ─────────────────────────────────
+  // Get it free at https://formspree.io
+  var FORMSPREE_ID = 'xykovlry';
+  var FORMSPREE_URL = 'https://formspree.io/f/' + FORMSPREE_ID;
+  var IS_CONFIGURED = FORMSPREE_ID !== 'YOUR_FORM_ID';
+
+  var form     = document.getElementById('contact-form');
+  var success  = document.getElementById('contact-success');
+  var errBox   = document.getElementById('contact-error');
+  var errMsg   = document.getElementById('contact-error-msg');
+  var submit   = document.getElementById('c-submit');
+  var btnLabel = document.getElementById('c-btn-label');
+  var spinner  = document.getElementById('c-spinner');
+  var chars    = document.getElementById('c-chars');
+
+  var nameEl    = document.getElementById('c-name');
+  var emailEl   = document.getElementById('c-email');
+  var messageEl = document.getElementById('c-message');
+
+  var emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  // ── Character counter ──────────────────────────────────────────────────
+  messageEl.addEventListener('input', function () {
+    var len = messageEl.value.length;
+    chars.textContent = len + ' / 2000';
+    chars.style.color = len > 1800 ? '#f87171' : len > 1500 ? '#f59e0b' : '#475569';
+  });
+
+  // ── Focus / blur styles ────────────────────────────────────────────────
+  document.querySelectorAll('.c-input').forEach(function (el) {
+    el.addEventListener('focus', function () {
+      el.style.borderColor = '#6366f1';
+      el.style.boxShadow   = '0 0 0 3px rgba(99,102,241,0.18)';
+      el.style.background  = 'rgba(99,102,241,0.06)';
+    });
+    el.addEventListener('blur', function () {
+      el.style.boxShadow  = '';
+      el.style.background = 'rgba(255,255,255,0.05)';
+      validateField(el);
+    });
+    el.addEventListener('input', function () { clearErr(el); });
+  });
+
+  // ── Validation helpers ─────────────────────────────────────────────────
+  function setErr(inputEl, errId, msg) {
+    inputEl.style.borderColor = '#ef4444';
+    inputEl.style.boxShadow   = '0 0 0 3px rgba(239,68,68,0.12)';
+    var el = document.getElementById(errId);
+    if (el) { el.querySelector('span').textContent = msg; el.classList.remove('hidden'); }
+  }
+
+  function clearErr(inputEl) {
+    inputEl.style.borderColor = 'rgba(255,255,255,0.1)';
+    inputEl.style.boxShadow   = '';
+    var map = {'c-name':'err-name','c-email':'err-email','c-message':'err-message'};
+    var el  = document.getElementById(map[inputEl.id]);
+    if (el) el.classList.add('hidden');
+  }
+
+  function setValid(inputEl) {
+    inputEl.style.borderColor = '#10b981';
+    inputEl.style.boxShadow   = '0 0 0 3px rgba(16,185,129,0.12)';
+  }
+
+  function validateField(el) {
+    var v = el.value.trim();
+    if (el.id === 'c-name') {
+      if (!v)          { setErr(el,'err-name','Name is required.'); return false; }
+      if (v.length < 2){ setErr(el,'err-name','Name must be at least 2 characters.'); return false; }
+      setValid(el); return true;
+    }
+    if (el.id === 'c-email') {
+      if (!v)               { setErr(el,'err-email','Email is required.'); return false; }
+      if (!emailRe.test(v)) { setErr(el,'err-email','Please enter a valid email address.'); return false; }
+      setValid(el); return true;
+    }
+    if (el.id === 'c-message') {
+      if (!v)            { setErr(el,'err-message','Message is required.'); return false; }
+      if (v.length < 10) { setErr(el,'err-message','Message must be at least 10 characters.'); return false; }
+      if (v.length > 2000){ setErr(el,'err-message','Message must be 2000 characters or fewer.'); return false; }
+      setValid(el); return true;
+    }
+    return true;
+  }
+
+  // ── Submit ─────────────────────────────────────────────────────────────
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    errBox.classList.add('hidden');
+
+    // Guard: warn if Formspree is not configured yet
+    if (!IS_CONFIGURED) {
+      errMsg.textContent = 'Contact form not configured yet. Set your Formspree ID in templates/index.html.';
+      errBox.classList.remove('hidden');
+      return;
+    }
+
+    var ok = validateField(nameEl) & validateField(emailEl) & validateField(messageEl);
+    if (!ok) return;
+
+    // Loading state
+    submit.disabled = true;
+    btnLabel.classList.add('hidden');
+    spinner.classList.remove('hidden');
+
+    var payload = {
+      name:    nameEl.value.trim(),
+      email:   emailEl.value.trim(),
+      message: messageEl.value.trim(),
+    };
+
+    fetch(FORMSPREE_URL, {
+      method:  'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    })
+    .then(function (res) { return res.json().then(function(d){ return {ok:res.ok, data:d}; }); })
+    .then(function (r) {
+      if (r.ok) {
+        form.classList.add('hidden');
+        success.classList.remove('hidden');
+        // Smooth scroll to success message
+        success.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else {
+        var msg = (r.data.errors && r.data.errors[0] && r.data.errors[0].message)
+                  || r.data.error
+                  || 'Submission failed. Please try again.';
+        errMsg.textContent = msg;
+        errBox.classList.remove('hidden');
+      }
+    })
+    .catch(function () {
+      errMsg.textContent = 'Network error. Please check your connection and try again.';
+      errBox.classList.remove('hidden');
+    })
+    .finally(function () {
+      submit.disabled = false;
+      btnLabel.classList.remove('hidden');
+      spinner.classList.add('hidden');
+    });
+  });
+
+  // ── Reset ──────────────────────────────────────────────────────────────
+  window.resetContact = function () {
+    form.reset();
+    form.classList.remove('hidden');
+    success.classList.add('hidden');
+    errBox.classList.add('hidden');
+    chars.textContent = '0 / 2000';
+    document.querySelectorAll('.c-input').forEach(function (el) {
+      el.style.borderColor = 'rgba(255,255,255,0.1)';
+      el.style.boxShadow   = '';
+      el.style.background  = 'rgba(255,255,255,0.05)';
+    });
+    document.querySelectorAll('.c-err').forEach(function (el) { el.classList.add('hidden'); });
+  };
+})();
+</script>
+{% endblock %}

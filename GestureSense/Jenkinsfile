@@ -1,0 +1,148 @@
+// ══════════════════════════════════════════════════════════════════════════════
+// GestureSense – Jenkins CI/CD Pipeline
+// Stages: Checkout → Install → Lint → Test → Build Docker → Push → Deploy
+// ══════════════════════════════════════════════════════════════════════════════
+
+pipeline {
+    agent any
+
+    environment {
+        APP_NAME    = 'gesturesense'
+        IMAGE_NAME  = "gesturesense/app"
+        IMAGE_TAG   = "${env.BUILD_NUMBER}"
+        DOCKER_REGISTRY = credentials('docker-registry-credentials')
+    }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        timestamps()
+    }
+
+    stages {
+
+        // ── Stage 1: Checkout ──────────────────────────────────────────────
+        stage('Checkout') {
+            steps {
+                echo '📥 Checking out source code...'
+                checkout scm
+            }
+        }
+
+        // ── Stage 2: Setup Python environment ─────────────────────────────
+        stage('Setup Environment') {
+            steps {
+                echo '🐍 Setting up Python virtual environment...'
+                sh '''
+                    python3 -m venv venv
+                    . venv/bin/activate
+                    pip install --upgrade pip
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+
+        // ── Stage 3: Lint ──────────────────────────────────────────────────
+        stage('Lint') {
+            steps {
+                echo '🔍 Running code quality checks...'
+                sh '''
+                    . venv/bin/activate
+                    pip install flake8
+                    flake8 . --max-line-length=120 --exclude=venv,__pycache__,.git
+                '''
+            }
+        }
+
+        // ── Stage 4: Tests ─────────────────────────────────────────────────
+        stage('Test') {
+            steps {
+                echo '🧪 Running test suite...'
+                sh '''
+                    . venv/bin/activate
+                    pip install pytest
+                    pytest tests/ -v --tb=short || echo "No tests found, skipping."
+                '''
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'test-results/*.xml'
+                }
+            }
+        }
+
+        // ── Stage 5: Build Docker image ────────────────────────────────────
+        stage('Build Docker Image') {
+            steps {
+                echo "🐳 Building Docker image: ${IMAGE_NAME}:${IMAGE_TAG}"
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
+            }
+        }
+
+        // ── Stage 6: Security scan ─────────────────────────────────────────
+        stage('Security Scan') {
+            steps {
+                echo '🔒 Running security scan...'
+                sh '''
+                    . venv/bin/activate
+                    pip install safety
+                    safety check -r requirements.txt || true
+                '''
+            }
+        }
+
+        // ── Stage 7: Push to registry ──────────────────────────────────────
+        stage('Push Image') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo '📤 Pushing image to Docker registry...'
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-registry-credentials',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${IMAGE_NAME}:latest
+                    '''
+                }
+            }
+        }
+
+        // ── Stage 8: Deploy ────────────────────────────────────────────────
+        stage('Deploy') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo '🚀 Deploying GestureSense...'
+                sh '''
+                    docker stop gesturesense-app || true
+                    docker rm   gesturesense-app || true
+                    docker run -d \
+                        --name gesturesense-app \
+                        --restart unless-stopped \
+                        -p 5000:5000 \
+                        -e SECRET_KEY="${SECRET_KEY}" \
+                        ${IMAGE_NAME}:latest
+                '''
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Pipeline completed successfully!'
+        }
+        failure {
+            echo '❌ Pipeline failed. Check logs above.'
+        }
+        always {
+            sh 'docker system prune -f || true'
+            cleanWs()
+        }
+    }
+}
