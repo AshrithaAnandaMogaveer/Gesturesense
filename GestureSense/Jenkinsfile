@@ -35,11 +35,11 @@ pipeline {
                 echo '🐍 Setting up Python virtual environment...'
 
                 bat '''
-                    python -m venv venv
+                    py -m venv venv
 
                     call venv\\Scripts\\activate
 
-                    python -m pip install --upgrade pip
+                    py -m pip install --upgrade pip
 
                     pip install -r requirements.txt
                 '''
@@ -165,5 +165,3 @@ pipeline {
         }
     }
 }
-
-
