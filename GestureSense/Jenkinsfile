@@ -1,4 +1,3 @@
-
 // ══════════════════════════════════════════════════════════════════════════════
 // GestureSense – Jenkins CI/CD Pipeline
 // Stages: Checkout → Install → Lint → Test → Build Docker → Push → Deploy
@@ -35,11 +34,11 @@ pipeline {
                 echo '🐍 Setting up Python virtual environment...'
 
                 bat '''
-                    py -m venv venv
+                    "C:\\Users\\amash\\AppData\\Local\\Programs\\Python\\Python313\\python.exe" -m venv venv
 
                     call venv\\Scripts\\activate
 
-                    py -m pip install --upgrade pip
+                    "C:\\Users\\amash\\AppData\\Local\\Programs\\Python\\Python313\\python.exe" -m pip install --upgrade pip
 
                     pip install -r requirements.txt
                 '''
