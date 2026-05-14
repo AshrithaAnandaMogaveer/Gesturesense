@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender-dev \
     libgomp1 \
-    libgl1-mesa-glx \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Stage 2: Dependencies ──────────────────────────────────────────────────────
@@ -45,5 +45,5 @@ EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/')" || exit 1
 
-# Run with Gunicorn in production
+# Run Flask app
 CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=5000"]
