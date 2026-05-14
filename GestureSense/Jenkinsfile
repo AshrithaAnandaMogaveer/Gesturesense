@@ -1,4 +1,4 @@
-```groovy
+```
 // ══════════════════════════════════════════════════════════════════════════════
 // GestureSense – Jenkins CI/CD Pipeline
 // Stages: Checkout → Install → Lint → Test → Build Docker → Push → Deploy
