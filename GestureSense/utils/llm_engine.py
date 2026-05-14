@@ -21,7 +21,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ── LM Studio connection config ────────────────────────────────────────────────
-LM_STUDIO_BASE = "http://localhost:1234/v1"
+LM_STUDIO_BASE = "http://host.docker.internal:1234/v1"
 MODELS_URL     = f"{LM_STUDIO_BASE}/models"
 CHAT_URL       = f"{LM_STUDIO_BASE}/chat/completions"
 TIMEOUT        = 120   # seconds — LM Studio can be slow on first token
