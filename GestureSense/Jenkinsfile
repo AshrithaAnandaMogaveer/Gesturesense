@@ -1,4 +1,4 @@
-```groovy id="9f2kdm"
+
 // ══════════════════════════════════════════════════════════════════════════════
 // GestureSense – Jenkins CI/CD Pipeline
 // Stages: Checkout → Install → Lint → Test → Build Docker → Push → Deploy
@@ -165,4 +165,4 @@ pipeline {
         }
     }
 }
-```
+
