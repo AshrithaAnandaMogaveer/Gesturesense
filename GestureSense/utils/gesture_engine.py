@@ -2,10 +2,18 @@
 GestureEngine - Hand sign + Face expression recognition system.
 
 Processes BOTH:
-  - Hand signs  : 40+ gestures via MediaPipe Hands (21 landmarks)
+  - Hand signs  : ISL trained model (primary) + 45+ rule-based gestures (fallback)
   - Face expressions : 10+ expressions via MediaPipe Face Mesh (468 landmarks)
 
 Both detectors run in the same background thread on the same frame.
+
+ISL model integration
+---------------------
+When models_cache/isl_model.pkl is present (produced by train_isl_model.py),
+classify_hand_sign() uses the trained Random Forest for ISL alphabet/digit
+recognition.  If the model is absent or its confidence falls below the threshold
+(ISL_CONFIDENCE_THRESHOLD = 0.55), it transparently falls back to the hand-crafted
+rule-based classifier so the app always works, even before training.
 """
 
 import cv2
@@ -17,6 +25,9 @@ import math
 import base64
 from collections import deque, Counter
 from typing import Generator, Tuple, List, Optional
+
+# Sign Language MNIST pixel model – lazy-loaded on first use
+from utils.isl_classifier import get_isl_classifier, ISL_CONFIDENCE_THRESHOLD
 
 
 # =============================================================================
@@ -383,6 +394,67 @@ def classify_gesture(lm, handedness="Right"):
     return labels.get(count,"Custom Sign") + " - Unclassified", 0.60
 
 
+# =============================================================================
+# UNIFIED HAND SIGN DISPATCHER
+# =============================================================================
+
+# Generic fallback labels produced by classify_gesture() when it can't
+# identify a specific named gesture. These are the ONLY cases where the
+# ML alphabet model should take over.
+_RULE_GENERIC_LABELS = {
+    "Closed Fist - Unclassified",
+    "One Finger - Unclassified",
+    "Two Fingers - Unclassified",
+    "Three Fingers - Unclassified",
+    "Four Fingers - Unclassified",
+    "Open Hand - Unclassified",
+    "Custom Sign - Unclassified",
+    "No Hand Detected",
+}
+
+
+def _rule_is_generic(label: str) -> bool:
+    """Return True when the rule-based result is a vague fallback."""
+    return label in _RULE_GENERIC_LABELS or label.endswith("Unclassified")
+
+
+def classify_hand_sign(hand_results, frame_bgr=None,
+                       lm=None, handedness: str = "Right") -> Tuple[str, float]:
+    """
+    ISL-ONLY classifier - uses ONLY the trained ISL model.
+    
+    All old rule-based gestures are DISABLED.
+    Only the 114 ISL words from ISL_CSLRT_Corpus are recognized.
+    
+    Logic
+    -----
+    1. Check if ISL model is available and loaded
+    2. Extract features from hand landmarks
+    3. Predict using SVM model
+    4. Always show the best prediction with confidence
+    5. Use smoother to stabilize results (no threshold here)
+    """
+    # Check if ISL model is available
+    isl = get_isl_classifier()
+    if not isl.is_available():
+        return "ISL Model Not Loaded", 0.0
+    
+    # Check if we have hand detection results
+    if hand_results is None or not hand_results.multi_hand_landmarks:
+        return "No Hand Detected", 0.0
+    
+    # Run ISL model prediction
+    sl_label, sl_conf, _detail = isl.predict(hand_results, frame_bgr=frame_bgr)
+    
+    # Always return the model's best prediction
+    # The smoother will handle stabilization, not the threshold
+    # Show confidence percentage so user knows how certain it is
+    if sl_conf >= 0.15:  # Very low threshold - show almost everything
+        return sl_label, sl_conf
+    
+    # Only show "Unknown" for extremely low confidence (<15%)
+    return f"{sl_label} (?)", sl_conf
+
 def process_image(image_bytes: bytes) -> dict:
     """
     Analyse a static image for hand signs.
@@ -436,7 +508,10 @@ def process_image(image_bytes: bytes) -> dict:
                     side = results.multi_handedness[idx].classification[0].label
 
                 # Classify the hand sign
-                sign_name, conf = classify_gesture(hand_lm.landmark, side)
+                sign_name, conf = classify_hand_sign(
+                    results, frame_bgr=frame,
+                    lm=hand_lm.landmark, handedness=side
+                )
                 gestures_found.append({
                     "hand":       idx + 1,
                     "side":       side,
@@ -470,7 +545,7 @@ def process_image(image_bytes: bytes) -> dict:
                     cv2.line(frame, (cx, cy), (cx, cy + dy*blen), (255, 140, 167), 2)
 
                 # Label pill above box
-                label   = f"#{idx+1} {sign_name}  {conf*100:.0f}%"
+                label   = f"#{idx+1} {_cv_text(sign_name)}  {conf*100:.0f}%"
                 label_y = max(y1 - 12, 22)
                 (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
                 cv2.rectangle(frame, (x1, label_y - th - 8), (x1 + tw + 10, label_y + 4),
@@ -506,37 +581,90 @@ def process_image(image_bytes: bytes) -> dict:
 
 class GestureSmoother:
     """
-    Rolling-window majority vote to prevent flickering between similar signs.
-    A sign is only emitted when it appears in >= threshold fraction of recent frames.
+    Ultra-fast smoother with confidence-aware filtering.
+    - Shows predictions immediately if confidence is high
+    - Uses 2-frame window for low-latency switching
+    - Filters out very low confidence (<30%) automatically
+    - Instant reset on gesture change
     """
-    def __init__(self, window: int = 8, threshold: float = 0.60):
+    def __init__(self, window: int = 2, threshold: float = 0.50):
         self._window    = window
         self._threshold = threshold
         self._history: deque = deque(maxlen=window)
         self._stable      = "No Hand Detected"
         self._stable_conf = 0.0
+        self._no_hand_count = 0
+        self._last_raw_gesture = None
 
     def update(self, gesture: str, confidence: float) -> Tuple[str, float]:
-        self._history.append((gesture, confidence))
-        if len(self._history) < 3:
+        # Track consecutive no-hand frames and reset smoother quickly
+        if gesture == "No Hand Detected":
+            self._no_hand_count += 1
+            if self._no_hand_count >= 1:  # Reset after just 1 frame
+                self.reset()
+            return "No Hand Detected", 0.0
+        else:
+            self._no_hand_count = 0
+
+        # Filter out very low confidence predictions (<30%)
+        if confidence < 0.30:
+            # Too uncertain - keep showing previous stable prediction
             return self._stable, self._stable_conf
-        names = [g for g, _ in self._history]
-        most_common, count = Counter(names).most_common(1)[0]
-        if count / len(self._history) >= self._threshold:
-            avg_conf = float(np.mean([c for g, c in self._history if g == most_common]))
-            self._stable      = most_common
-            self._stable_conf = avg_conf
+
+        # INSTANT SWITCH: If new gesture is different, clear old data
+        if self._last_raw_gesture and gesture != self._last_raw_gesture:
+            recent_gestures = [g for g, _ in self._history]
+            if recent_gestures and gesture not in recent_gestures:
+                # New gesture - clear history for instant switch
+                self._history.clear()
+        
+        self._last_raw_gesture = gesture
+        self._history.append((gesture, confidence))
+
+        # Show high-confidence gestures immediately (>60%)
+        if confidence > 0.60:
+            self._stable = gesture
+            self._stable_conf = confidence
+            return self._stable, self._stable_conf
+
+        # For medium confidence (30-60%), need at least 2 consistent frames
+        if len(self._history) >= 2:
+            names = [g for g, _ in self._history]
+            most_common, count = Counter(names).most_common(1)[0]
+            
+            # Both frames agree?
+            if count >= 2:
+                avg_conf = float(np.mean([c for g, c in self._history if g == most_common]))
+                self._stable      = most_common
+                self._stable_conf = avg_conf
+                return self._stable, self._stable_conf
+        
+        # Single frame or no agreement yet - show it anyway if conf > 40%
+        if len(self._history) >= 1 and confidence > 0.40:
+            self._stable = gesture
+            self._stable_conf = confidence
+
         return self._stable, self._stable_conf
 
     def reset(self):
         self._history.clear()
-        self._stable      = "No Hand Detected"
-        self._stable_conf = 0.0
+        self._stable        = "No Hand Detected"
+        self._stable_conf   = 0.0
+        self._no_hand_count = 0
+        self._last_raw_gesture = None
 
 
 # =============================================================================
 # HUD RENDERER  -  on-frame overlays for live webcam
 # =============================================================================
+
+def _cv_text(s: str) -> str:
+    """
+    Strip characters that cv2.putText cannot render (emoji, non-Latin Unicode).
+    Keeps ASCII printable characters only.
+    """
+    return s.encode("ascii", errors="ignore").decode("ascii").strip()
+
 
 class HUDRenderer:
     """Draws landmarks, bounding box, and info panel onto webcam frames."""
@@ -596,6 +724,7 @@ class HUDRenderer:
 
         # Sign name
         disp = gesture if gesture != "No Hand Detected" else "Show a hand sign..."
+        disp = _cv_text(disp)
         col  = self.NEON_BLUE if gesture != "No Hand Detected" else (70, 70, 110)
         cv2.putText(frame, disp, (16, h - 52),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.78, col, 2, cv2.LINE_AA)
@@ -625,6 +754,19 @@ class HUDRenderer:
         cv2.putText(frame, "GestureSense AI", (w // 2 - 70, 24),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.50, (60, 80, 160), 1, cv2.LINE_AA)
 
+        # ISL model status badge (top-right, below FPS)
+        isl = get_isl_classifier()
+        if isl.is_available():
+            a = "A" if isl.angles_available else "-"
+            m = "M" if isl.mnist_available  else "-"
+            badge_txt = f"SL [{a}+{m}] {len(isl.labels)}cls"
+            badge_col = (80, 220, 100)    # green
+        else:
+            badge_txt = "Rule-Based"
+            badge_col = (80, 140, 255)    # amber
+        cv2.putText(frame, badge_txt, (w - 150, 44),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.40, badge_col, 1, cv2.LINE_AA)
+
         # Neon border
         cv2.rectangle(frame, (1, 1), (w - 2, h - 2), (60, 80, 200), 1)
 
@@ -642,31 +784,54 @@ class HUDRenderer:
 class GestureEngine:
     """
     Thread-safe live hand sign + face expression recognition engine.
-    A single daemon thread owns the webcam, MediaPipe Hands, and Face Mesh.
-    generate_frames() reads from a shared JPEG buffer - no second camera open.
+
+    Two-thread architecture to prevent ML inference from stalling the camera:
+
+      Thread 1 – _capture_loop  (camera thread)
+        Reads frames from webcam, runs MediaPipe Hands + FaceMesh,
+        draws HUD overlays, encodes JPEG.  No ML model calls here.
+        Stores the latest raw frame + MediaPipe results in a queue.
+
+      Thread 2 – _classify_loop  (classifier thread)
+        Picks up the latest frame + hand results from the queue,
+        runs both ISL models (angles + MNIST HOG), updates gesture label.
+        Runs at its own pace — camera never waits for it.
+
+    generate_frames() reads from the shared JPEG buffer — no second camera open.
     """
 
     def __init__(self):
         self._mp_hands        = mp.solutions.hands
         self._mp_face         = mp.solutions.face_mesh
         self._lock            = threading.Lock()
+
         # Hand state
         self._latest_gesture  = "No Hand Detected"
         self._latest_conf     = 0.0
         self._hand_count      = 0
+
         # Face state
         self._latest_face_expr = "No Face Detected"
         self._latest_face_conf = 0.0
         self._face_detected    = False
-        # Shared
+
+        # Shared frame buffer (written by capture thread, read by generator)
         self._latest_frame    = None
+
+        # Session stats
         self._session_start   = None
         self._total_detected  = 0
         self._conf_history: deque = deque(maxlen=50)
-        self._running  = False
-        self._thread   = None
-        self._smoother = GestureSmoother(window=8, threshold=0.60)
-        self._hud      = HUDRenderer()
+
+        # Classify queue: holds (frame_bgr, hand_results, primary_lm, primary_side)
+        # maxsize=1 — classifier always works on the most recent frame, drops stale ones
+        self._classify_queue  = __import__("queue").Queue(maxsize=1)
+
+        self._running   = False
+        self._cap_thread = None
+        self._cls_thread = None
+        self._smoother  = GestureSmoother(window=2, threshold=0.50)  # Ultra-fast: 2-frame window
+        self._hud       = HUDRenderer()
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -684,14 +849,19 @@ class GestureEngine:
         with self._lock:
             dur = int(time.time() - self._session_start) if self._session_start else 0
             avg = float(np.mean(list(self._conf_history))) if self._conf_history else 0.0
+            isl = get_isl_classifier()
             return {
-                "total_detected":   self._total_detected,
-                "hand_count":       self._hand_count,
-                "session_seconds":  dur,
-                "avg_confidence":   round(avg * 100, 1),
-                "fps":              round(self._hud.get_fps(), 1),
-                "face_expression":  self._latest_face_expr,
-                "face_detected":    self._face_detected,
+                "total_detected":    self._total_detected,
+                "hand_count":        self._hand_count,
+                "session_seconds":   dur,
+                "avg_confidence":    round(avg * 100, 1),
+                "fps":               round(self._hud.get_fps(), 1),
+                "face_expression":   self._latest_face_expr,
+                "face_detected":     self._face_detected,
+                "isl_model_active":  isl.is_available(),
+                "isl_classes":       len(isl.labels),
+                "model_angles":      isl.angles_available,
+                "model_mnist":       isl.mnist_available,
             }
 
     def generate_frames(self) -> Generator[bytes, None, None]:
@@ -701,34 +871,43 @@ class GestureEngine:
             with self._lock:
                 fb = self._latest_frame
             if fb is None:
-                time.sleep(0.03)
+                time.sleep(0.01)
                 continue
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + fb + b"\r\n"
-            time.sleep(0.033)
+            time.sleep(0.02)   # ~50 fps cap to avoid saturating the browser
 
     def stop(self):
         self._running = False
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=3)
+        for t in (self._cap_thread, self._cls_thread):
+            if t and t.is_alive():
+                t.join(timeout=3)
 
     # ── Private ────────────────────────────────────────────────────────────────
 
     def _ensure_running(self):
-        if not self._running or (self._thread and not self._thread.is_alive()):
-            self._running = True
-            self._thread  = threading.Thread(
+        if not self._running or (self._cap_thread and not self._cap_thread.is_alive()):
+            self._running    = True
+            self._cap_thread = threading.Thread(
                 target=self._capture_loop, daemon=True, name="GestureCapture")
-            self._thread.start()
+            self._cls_thread = threading.Thread(
+                target=self._classify_loop, daemon=True, name="GestureClassify")
+            self._cap_thread.start()
+            self._cls_thread.start()
 
     def _capture_loop(self):
-        """Background thread: webcam -> MediaPipe Hands + Face Mesh -> classify -> JPEG."""
-        cap = cv2.VideoCapture(0)
+        """
+        Camera thread: read frame -> MediaPipe -> draw HUD -> encode JPEG.
+        Never calls ML models. Pushes (frame, hand_results, lm, side)
+        to _classify_queue for the classifier thread to pick up.
+        """
+        import platform
+        backend = cv2.CAP_DSHOW if platform.system() == "Windows" else cv2.CAP_ANY
+        cap = cv2.VideoCapture(0, backend)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cap.set(cv2.CAP_PROP_FPS,          30)
         cap.set(cv2.CAP_PROP_BUFFERSIZE,   1)
 
-        # Initialise both MediaPipe solutions
         hands = self._mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=2,
@@ -739,7 +918,7 @@ class GestureEngine:
         face_mesh = self._mp_face.FaceMesh(
             static_image_mode=False,
             max_num_faces=1,
-            refine_landmarks=True,          # enables iris landmarks
+            refine_landmarks=True,
             min_detection_confidence=0.55,
             min_tracking_confidence=0.50,
         )
@@ -748,86 +927,140 @@ class GestureEngine:
             self._session_start = time.time()
             self._smoother.reset()
 
-        prev_hand = "No Hand Detected"
-
         try:
             while self._running:
                 ok, frame = cap.read()
                 if not ok:
-                    time.sleep(0.05)
+                    time.sleep(0.02)
                     continue
 
                 self._hud.tick()
                 frame = cv2.flip(frame, 1)
 
-                # Single RGB conversion shared by both detectors
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 rgb.flags.writeable = False
-
                 hand_results = hands.process(rgb)
                 face_results = face_mesh.process(rgb)
-
                 rgb.flags.writeable = True
 
-                # ── HAND DETECTION ─────────────────────────────────────────────
-                raw_g, raw_c, hc = "No Hand Detected", 0.0, 0
+                # ── Draw landmarks + collect primary hand ──────────────────────
+                hc           = 0
+                primary_lm   = None
+                primary_side = "Right"
 
                 if hand_results.multi_hand_landmarks:
                     hc = len(hand_results.multi_hand_landmarks)
                     for idx, hlm in enumerate(hand_results.multi_hand_landmarks):
                         side = "Right"
-                        if hand_results.multi_handedness and idx < len(hand_results.multi_handedness):
+                        if (hand_results.multi_handedness and
+                                idx < len(hand_results.multi_handedness)):
                             side = hand_results.multi_handedness[idx].classification[0].label
                         self._hud.draw_landmarks(frame, hlm)
                         self._hud.draw_bounding_box(frame, hlm)
-                        raw_g, raw_c = classify_gesture(hlm.landmark, side)
+                        if idx == 0:
+                            primary_lm   = hlm.landmark
+                            primary_side = side
 
-                g, c = self._smoother.update(raw_g, raw_c)
+                # ── Push to classifier thread (non-blocking, drop old frame) ──
+                if hc > 0:
+                    payload = (frame.copy(), hand_results, primary_lm, primary_side)
+                else:
+                    # No hand — send sentinel so smoother resets quickly
+                    payload = (None, None, None, "Right")
+                try:
+                    self._classify_queue.put_nowait(payload)
+                except Exception:
+                    pass  # queue full — classifier is busy, skip this frame
 
-                # ── FACE EXPRESSION DETECTION ──────────────────────────────────
-                face_expr = "No Face Detected"
-                face_conf = 0.0
+                # ── Read latest gesture label (set by classifier thread) ───────
+                with self._lock:
+                    g = self._latest_gesture
+                    c = self._latest_conf
+
+                # ── Face expression (lightweight, keep on capture thread) ──────
+                face_expr  = "No Face Detected"
+                face_conf  = 0.0
                 face_found = False
-
                 if face_results.multi_face_landmarks:
                     face_found = True
                     flm = face_results.multi_face_landmarks[0].landmark
                     face_expr, face_conf = classify_face_expression(flm)
-                    self._draw_face_overlay(frame, face_results.multi_face_landmarks[0], face_expr, face_conf)
+                    self._draw_face_overlay(
+                        frame, face_results.multi_face_landmarks[0],
+                        face_expr, face_conf)
 
                 # ── HUD ────────────────────────────────────────────────────────
                 self._hud.draw_hud(frame, g, c, hc, True)
                 if hc == 0:
                     self._hud.draw_no_hand(frame)
-
-                # Draw face expression label on frame
                 self._draw_face_label(frame, face_expr, face_conf, face_found)
 
                 # ── Encode JPEG ────────────────────────────────────────────────
-                ret, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 82])
+                ret, buf = cv2.imencode(".jpg", frame,
+                                        [cv2.IMWRITE_JPEG_QUALITY, 75])
                 if not ret:
                     continue
 
                 with self._lock:
-                    self._latest_gesture    = g
-                    self._latest_conf       = c
-                    self._latest_frame      = buf.tobytes()
-                    self._hand_count        = hc
-                    self._latest_face_expr  = face_expr
-                    self._latest_face_conf  = face_conf
-                    self._face_detected     = face_found
-                    if g != "No Hand Detected" and g != prev_hand:
-                        self._total_detected += 1
-                        if c > 0:
-                            self._conf_history.append(c)
-
-                prev_hand = g
+                    self._latest_frame     = buf.tobytes()
+                    self._hand_count       = hc
+                    self._latest_face_expr = face_expr
+                    self._latest_face_conf = face_conf
+                    self._face_detected    = face_found
 
         finally:
             cap.release()
             hands.close()
             face_mesh.close()
             self._running = False
+
+    def _classify_loop(self):
+        """
+        Classifier thread: runs both ML models on frames from the queue.
+        Completely decoupled from the camera — never blocks frame delivery.
+        """
+        import queue as _queue
+        prev_hand = "No Hand Detected"
+
+        while self._running:
+            try:
+                frame_bgr, hand_results, primary_lm, primary_side = \
+                    self._classify_queue.get(timeout=0.3)
+            except _queue.Empty:
+                # Nothing in queue — ensure label is cleared if hand is gone
+                with self._lock:
+                    if self._hand_count == 0:
+                        g, c = self._smoother.update("No Hand Detected", 0.0)
+                        self._latest_gesture = g
+                        self._latest_conf    = c
+                continue
+
+            # Sentinel: no hand detected in this frame
+            if hand_results is None:
+                g, c = self._smoother.update("No Hand Detected", 0.0)
+                with self._lock:
+                    self._latest_gesture = g
+                    self._latest_conf    = c
+                prev_hand = "No Hand Detected"
+                continue
+
+            # Run full classification (both ML models + rule-based)
+            raw_g, raw_c = classify_hand_sign(
+                hand_results, frame_bgr=frame_bgr,
+                lm=primary_lm, handedness=primary_side
+            )
+
+            g, c = self._smoother.update(raw_g, raw_c)
+
+            with self._lock:
+                self._latest_gesture = g
+                self._latest_conf    = c
+                if g != "No Hand Detected" and g != prev_hand:
+                    self._total_detected += 1
+                    if c > 0:
+                        self._conf_history.append(c)
+
+            prev_hand = g
 
     def _draw_face_overlay(self, frame, face_landmarks, expr: str, conf: float):
         """Draw minimal face mesh contours (eyes, mouth, brows) - not all 468 points."""
@@ -853,7 +1086,7 @@ class GestureEngine:
             return
 
         # Background pill
-        label = f"Face: {expr}  {conf*100:.0f}%"
+        label = f"Face: {_cv_text(expr)}  {conf*100:.0f}%"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.52, 1)
         x = (w - tw) // 2
         y = 50

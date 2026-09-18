@@ -1,0 +1,109 @@
+================================================================================
+                    ISL GESTURES - QUICK REFERENCE
+================================================================================
+
+WHAT CAN YOU SHOW?
+------------------
+The system recognizes 114 ISL WORDS (not alphabet letters).
+These are full word gestures from Indian Sign Language.
+
+
+EASIEST GESTURES TO START WITH:
+--------------------------------
+
+1. I_ME_MINE_MY        → Point to yourself (chest)
+2. YOU                 → Point forward (at camera/person)
+3. FOOD                → Hand to mouth (eating motion)
+4. WATER               → Cupped hand to mouth (drinking)
+5. HELLO_HI            → Open palm wave / flat hand forward
+6. THANK               → Hand from chin/lips moving forward
+7. HELP                → One hand on other palm (supporting)
+8. SORRY               → Fist circling on chest
+9. GOOD                → Positive gesture (like thumbs up position)
+10. STOP               → Flat hand raised (stop sign)
+
+
+COMMON CONVERSATION WORDS:
+--------------------------
+HELLO_HI, THANK, SORRY, PLEASE, WELCOME, HELP
+WHAT, WHERE, WHO, HOW
+YES (AGREE), NO (NOT), GOOD, BAD, FINE
+HAPPY, ANGRY, TIRED, HUNGRY, THIRSTY
+
+
+DAILY NEEDS:
+------------
+FOOD, WATER, SLEEP, MEDICINE, PHONE, BED, ROOM
+COLD, HOT (FEVER), HURT, TIRED
+
+
+ACTIONS:
+--------
+GO, COME, STOP, DO, BRING, LEAVE, HELP, TAKE CARE
+TALK, CHAT, SPEAK, TELL, HEAR, REPEAT
+
+
+ALL 114 WORDS:
+--------------
+A LOT, ABUSE, AFRAID, AGREE, ALL, ANGRY, ANYTHING, APPRECIATE, BAD, BEAUTIFUL,
+BECOME, BED, BORED, BRING, CHAT, CLASS, COLD, COLLEGE_SCHOOL, COMB, COME,
+CONGRATULATIONS, CRYING, DARE, DIFFERENCE, DILEMMA, DISAPPOINTED, DO, DON'T CARE,
+ENJOY, FAVOUR, FEVER, FINE, FOOD, FREE, FRIEND, FROM, GO, GOOD, GRATEFUL, HAD,
+HAPPENED, HAPPY, HEAR, HEART, HELLO_HI, HELP, HIDING, HOW, HUNGRY, HURT,
+I_ME_MINE_MY, KIND, LEAVE, LIKE, LIKE_LOVE, MEAN IT, MEDICINE, MEET, NAME,
+NICE, NOT, NUMBER, OLD_AGE, ON THE WAY, OUTSIDE, PHONE, PLACE, PLEASE, POUR,
+PREPARE, PROMISE, REALLY, REPEAT, ROOM, SERVE, SHIRT, SITTING, SLEEP, SLOWER,
+SO MUCH, SOFTLY, SOME HOW, SOME ONE, SOMETHING, SORRY, SPEAK, STOP, STUBBORN,
+SURE, TAKE CARE, TAKE TIME, TALK, TELL, THANK, THAT, THINGS, THINK, THIRSTY,
+TIRED, TODAY, TRAIN, TRUST, TRUTH, TURN ON, UNDERSTAND, WANT, WATER, WEAR,
+WELCOME, WHAT, WHERE, WHO, WORRY, YOU
+
+
+WHAT IS NOT RECOGNIZED:
+-----------------------
+❌ Alphabet letters (A, B, C, D, etc.)
+❌ Numbers (1, 2, 3, 4, etc.)
+❌ Generic gestures (Thumbs up, Peace, OK sign)
+❌ Random hand shapes
+
+
+HOW TO SEE THE EXACT GESTURES:
+-------------------------------
+Look at the training images in your project:
+
+📁 ISL_CSLRT_Corpus/ISL_CSLRT_Corpus/Frames_Word_Level/
+
+Each folder (e.g., "HELLO_HI", "FOOD", "THANK") contains example photos
+showing exactly how to perform that ISL gesture.
+
+
+TIPS FOR GOOD RECOGNITION:
+---------------------------
+✓ Good lighting
+✓ Hand clearly visible in frame
+✓ Hold gesture steady for 0.3-0.5 seconds
+✓ Not too close, not too far (arm's length)
+✓ Match the actual ISL gesture from training images
+
+
+UNDERSTANDING THE OUTPUT:
+-------------------------
+The system shows:
+- Gesture name (e.g., "HELLO_HI", "FOOD", "THANK")
+- Confidence % (e.g., 68%, 45%, 32%)
+
+Confidence guide:
+>60% = Very confident (accurate)
+40-60% = Confident (good)
+30-40% = Uncertain (maybe)
+<30% = Very uncertain
+
+
+TEST NOW:
+---------
+http://127.0.0.1:5000
+http://192.168.31.35:5000
+
+Try showing: I_ME_MINE_MY (point to yourself) - easiest gesture!
+
+================================================================================

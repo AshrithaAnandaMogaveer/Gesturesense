@@ -196,9 +196,24 @@ function handleFeedError() {
       <div class="glass rounded-2xl p-5" style="border:1px solid rgba(255,255,255,0.06);">
         <h3 class="text-white font-semibold text-sm mb-3 flex items-center gap-2">
           <i class="fa-solid fa-list-check text-brand-400"></i> Supported Gestures
+          <!-- ISL model status badge (updated by JS) -->
+          <span id="isl-badge" class="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full hidden"
+                style="background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.35); color:#a78bfa;">
+            ISL Model Active
+          </span>
         </h3>
+        <!-- ISL alphabet & digits -->
+        <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-2">ISL Alphabet &amp; Digits</p>
+        <div class="flex flex-wrap gap-1.5 mb-3">
+          {% for g in ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3','4','5','6','7','8','9'] %}
+          <span class="px-2 py-0.5 rounded-full text-xs font-bold"
+                style="background:rgba(99,102,241,0.12); border:1px solid rgba(99,102,241,0.28); color:#a78bfa;">{{ g }}</span>
+          {% endfor %}
+        </div>
+        <!-- Expressive gestures -->
+        <p class="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-2">Expressive Gestures</p>
         <div class="flex flex-wrap gap-2">
-          {% for g in ['Flower 🌸','Open Palm �','High Five ✋','Namaste 🙏','OK Sign 👌','Thumbs Up 👍','Thumbs Down 👎','Fist ✊','Victory ✌️','Peace ✌️','Point ☝️','Point Right 👉','Point Left �','Point Down 👇','Rock On �','Call Me 🤙','I Love You �','Finger Heart 🫰','Pinch �','Snap �','Vulcan Salute 🖖','Crossed Fingers 🤞','Gun �','Claw Hand �','Clapping 👏','Fist Pump ✊','Thumbs Up High �','Eating 🍽️','Sleep �','Drinking 🥤','Writing ✍️','Thinking 🤔','Three 3️⃣','Four 4️⃣','Pinky Promise 🤙','Middle Finger �'] %}
+          {% for g in ['Flower','Open Palm','High Five','Namaste','OK Sign','Thumbs Up','Thumbs Down','Fist','Victory','Peace','Point Up','Point Right','Point Left','Point Down','Rock On','Call Me','ILY Sign','Finger Heart','Pinch','Snap','Vulcan Salute','Crossed Fingers','Clapping','Fist Pump','Eating','Drinking','Writing','Thinking'] %}
           <span class="px-3 py-1 rounded-full text-xs font-medium text-brand-400"
                 style="background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.22);">{{ g }}</span>
           {% endfor %}
@@ -585,6 +600,47 @@ function confColour(pct) {
 // ── Gesture knowledge base (matches classifier output names exactly) ─────────
 const GESTURE_INFO = {
 
+  // ── ISL ALPHABET (A-Z) ────────────────────────────────────────────────────
+  // Keys match the "SL: <label>" format emitted by classify_hand_sign()
+  'SL: A': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter A.', how:'Make a fist with the thumb resting alongside the index finger.', uses:['Letter A','ISL alphabet','Spelling words'] },
+  'SL: B': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter B.', how:'Hold all four fingers straight up, thumb folded across the palm.', uses:['Letter B','ISL alphabet','Spelling words'] },
+  'SL: C': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter C.', how:'Curve all fingers and thumb into a C shape.', uses:['Letter C','ISL alphabet','Spelling words'] },
+  'SL: D': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter D.', how:'Index finger points up, other fingers and thumb form a circle.', uses:['Letter D','ISL alphabet','Spelling words'] },
+  'SL: E': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter E.', how:'Bend all fingers down, thumb tucked under them.', uses:['Letter E','ISL alphabet','Spelling words'] },
+  'SL: F': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter F.', how:'Index and thumb touch at the tips; other fingers extended.', uses:['Letter F','ISL alphabet','Spelling words'] },
+  'SL: G': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter G.', how:'Index finger and thumb point sideways, parallel to the ground.', uses:['Letter G','ISL alphabet','Spelling words'] },
+  'SL: H': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter H.', how:'Index and middle fingers extended sideways together, horizontally.', uses:['Letter H','ISL alphabet','Spelling words'] },
+  'SL: I': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter I.', how:'Only the pinky finger is extended, others curled.', uses:['Letter I','ISL alphabet','Spelling words'] },
+  'SL: J': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter J.', how:'Pinky extended; trace a J curve in the air.', uses:['Letter J','ISL alphabet','Spelling words'] },
+  'SL: K': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter K.', how:'Index and middle fingers extended up in a V, thumb between them.', uses:['Letter K','ISL alphabet','Spelling words'] },
+  'SL: L': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter L.', how:'Thumb and index finger form an L shape; other fingers curled.', uses:['Letter L','ISL alphabet','Spelling words'] },
+  'SL: M': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter M.', how:'Three fingers folded over the thumb.', uses:['Letter M','ISL alphabet','Spelling words'] },
+  'SL: N': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter N.', how:'Two fingers folded over the thumb.', uses:['Letter N','ISL alphabet','Spelling words'] },
+  'SL: O': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter O.', how:'All fingers and thumb curve together to form an O.', uses:['Letter O','ISL alphabet','Spelling words'] },
+  'SL: P': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter P.', how:'Like K but hand points downward.', uses:['Letter P','ISL alphabet','Spelling words'] },
+  'SL: Q': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter Q.', how:'Like G but hand points downward.', uses:['Letter Q','ISL alphabet','Spelling words'] },
+  'SL: R': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter R.', how:'Index and middle fingers crossed and extended upward.', uses:['Letter R','ISL alphabet','Spelling words'] },
+  'SL: S': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter S.', how:'Fist with thumb crossed over the fingers.', uses:['Letter S','ISL alphabet','Spelling words'] },
+  'SL: T': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter T.', how:'Thumb between index and middle fingers, fist closed.', uses:['Letter T','ISL alphabet','Spelling words'] },
+  'SL: U': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter U.', how:'Index and middle fingers extended together straight up.', uses:['Letter U','ISL alphabet','Spelling words'] },
+  'SL: V': { emoji:'✌️', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter V.', how:'Index and middle fingers extended up in a V / peace sign.', uses:['Letter V','ISL alphabet','Spelling words'] },
+  'SL: W': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter W.', how:'Index, middle, and ring fingers extended, spread in a W.', uses:['Letter W','ISL alphabet','Spelling words'] },
+  'SL: X': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter X.', how:'Index finger hooked or crooked; other fingers curled.', uses:['Letter X','ISL alphabet','Spelling words'] },
+  'SL: Y': { emoji:'🤙', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter Y.', how:'Thumb and pinky extended, others curled (like "call me").', uses:['Letter Y','ISL alphabet','Spelling words'] },
+  'SL: Z': { emoji:'🤚', category:'ISL Alphabet', color:'#6366f1', desc:'Indian Sign Language letter Z.', how:'Index finger traces a Z shape in the air.', uses:['Letter Z','ISL alphabet','Spelling words'] },
+
+  // ── ISL DIGITS (0-9) ──────────────────────────────────────────────────────
+  'SL: 0': { emoji:'👌', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 0.', how:'All fingers curved to meet the thumb, forming an O / zero.', uses:['Digit 0','ISL numbers','Counting'] },
+  'SL: 1': { emoji:'☝️', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 1.', how:'Index finger pointing up, all others curled.', uses:['Digit 1','ISL numbers','Counting'] },
+  'SL: 2': { emoji:'✌️', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 2.', how:'Index and middle fingers extended up.', uses:['Digit 2','ISL numbers','Counting'] },
+  'SL: 3': { emoji:'🤟', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 3.', how:'Thumb, index, and middle fingers extended.', uses:['Digit 3','ISL numbers','Counting'] },
+  'SL: 4': { emoji:'🖖', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 4.', how:'Four fingers extended, thumb folded in.', uses:['Digit 4','ISL numbers','Counting'] },
+  'SL: 5': { emoji:'🖐', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 5.', how:'All five fingers and thumb extended open.', uses:['Digit 5','ISL numbers','Counting'] },
+  'SL: 6': { emoji:'🤚', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 6.', how:'Pinky and thumb touching, other fingers extended.', uses:['Digit 6','ISL numbers','Counting'] },
+  'SL: 7': { emoji:'🤚', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 7.', how:'Ring finger and thumb touching, others extended.', uses:['Digit 7','ISL numbers','Counting'] },
+  'SL: 8': { emoji:'🤚', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 8.', how:'Middle finger and thumb touching, others extended.', uses:['Digit 8','ISL numbers','Counting'] },
+  'SL: 9': { emoji:'🤚', category:'ISL Digit', color:'#a78bfa', desc:'Indian Sign Language digit 9.', how:'Index finger and thumb touching in an O, others extended.', uses:['Digit 9','ISL numbers','Counting'] },
+
   // ── FLOWER ────────────────────────────────────────────────────────────────
   'Flower - Blooming / Beauty': {
     emoji: '🌸',
@@ -868,7 +924,9 @@ function normaliseGestureName(raw) {
   if (!raw) return null;
   // 1. Exact match
   if (GESTURE_INFO[raw]) return raw;
-  // 2. Prefix match — classifier returns "X - Y", KB key is "X - Y"
+  // 2. ISL prefix – classifier emits "SL: A", key is "SL: A"
+  if (raw.startsWith('SL: ') && GESTURE_INFO[raw]) return raw;
+  // 3. Prefix match — classifier returns "X - Y", KB key is "X - Y"
   for (const key of Object.keys(GESTURE_INFO)) {
     if (raw === key) return key;
     // Match by the part before the dash
@@ -1180,6 +1238,20 @@ async function fetchStats() {
     fpsVal.textContent  = d.fps ?? '0';
     handVal.textContent = d.hand_count ?? '0';
 
+    // ISL model badge
+    const islBadge = document.getElementById('isl-badge');
+    if (islBadge) {
+      if (d.isl_model_active) {
+        const a = d.model_angles ? 'Angles(A-Z)' : '';
+        const m = d.model_mnist  ? 'MNIST(A-Y)'  : '';
+        const parts = [a, m].filter(Boolean).join(' + ');
+        islBadge.textContent = `SL Models: ${parts}`;
+        islBadge.classList.remove('hidden');
+      } else {
+        islBadge.classList.add('hidden');
+      }
+    }
+
   } catch (_) {}
 }
 
@@ -1398,3 +1470,5 @@ function getGestureEmoji(name) {
 }
 </script>
 {% endblock %}
+
+
